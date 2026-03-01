@@ -3,6 +3,7 @@ package core
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"nim/internal/terminal"
 )
@@ -39,7 +40,16 @@ type Editor struct {
 	Msg         string // status message (e.g. "Saved")
 	Config      *Config
 	pendingKey  rune  // for chord keys (dd in Normal, jj in Insert with timeout)
-	ignoreNextJ bool  // after "jj" -> normal: ignore one extra "j" (key repeat)
+	ignoreNextJ bool  // after "jj" -> normal: ignore one extra "j" only if it comes within a short time (key repeat)
+	ignoreNextJTime time.Time
+
+	// Debounce: avoid double key when chord doesn't match (e.g. "j" then "a" for "ja").
+	lastInsertKey     string
+	lastInsertKeyTime time.Time
+
+	// Show last executed keybind in status bar for a short time.
+	statusKeybind     string
+	statusKeybindUntil time.Time
 }
 
 // NewEditor creates an editor with buffer and terminal. config may be nil; then DefaultConfig() is used.
@@ -171,6 +181,19 @@ func (e *Editor) Redraw() {
 	sb.WriteString(move(rows, 1))
 	sb.WriteString(statusBarOn)
 	status := e.statusText()
+	// If keybind was just executed, show it right-aligned so main content stays on the left
+	if e.statusKeybind != "" && time.Now().Before(e.statusKeybindUntil) {
+		rightPart := e.statusKeybind
+		if len(status)+1+len(rightPart) <= cols {
+			status = status + strings.Repeat(" ", cols-len(status)-len(rightPart)) + rightPart
+		} else {
+			maxLeft := cols - len(rightPart) - 1
+			if maxLeft > 0 && len(status) > maxLeft {
+				status = status[:maxLeft]
+			}
+			status = status + strings.Repeat(" ", cols-len(status)-len(rightPart)) + rightPart
+		}
+	}
 	if len(status) > cols {
 		status = status[:cols]
 	}
@@ -245,6 +268,10 @@ func byteOffsetToDisplayCol(s string, byteOff int, tabSize int) int {
 }
 
 func (e *Editor) statusText() string {
+	// Clear keybind display when expired
+	if e.statusKeybind != "" && !time.Now().Before(e.statusKeybindUntil) {
+		e.statusKeybind = ""
+	}
 	if e.Msg != "" {
 		return e.Msg
 	}
@@ -285,8 +312,9 @@ func (e *Editor) handleNormalKey(k terminal.Key) {
 		return
 	}
 
-	// Ignore extra "j" after "jj" (key repeat)
-	if e.ignoreNextJ && keyStr == "j" {
+	// Ignore extra "j" after "jj" only if it arrives within a short window (key repeat); otherwise treat as move_down.
+	const ignoreJWindowMs = 80
+	if e.ignoreNextJ && keyStr == "j" && time.Since(e.ignoreNextJTime) < ignoreJWindowMs*time.Millisecond {
 		e.ignoreNextJ = false
 		return
 	}
@@ -298,11 +326,13 @@ func (e *Editor) handleNormalKey(k terminal.Key) {
 			compound := string(e.pendingKey) + keyStr
 			e.pendingKey = 0
 			if action := e.Config.Keybinds.Action("normal", compound); action != "" {
+				e.setStatusKeybind(compound, action)
 				e.runAction(action)
 				return
 			}
 		}
 		if action := e.Config.Keybinds.Action("normal", keyStr); action != "" {
+			e.setStatusKeybind(keyStr, action)
 			e.runAction(action)
 			return
 		}
@@ -355,6 +385,12 @@ func (e *Editor) handleNormalKey(k terminal.Key) {
 	case k.Ctrl && k.Rune == 'c':
 		e.Quit = true
 	}
+}
+
+// setStatusKeybind shows the executed keybind in the status bar for a short time.
+func (e *Editor) setStatusKeybind(keys, action string) {
+	e.statusKeybind = keys + " → " + action
+	e.statusKeybindUntil = time.Now().Add(1500 * time.Millisecond)
 }
 
 // runAction runs the action named by the keybind config.
@@ -412,6 +448,7 @@ func (e *Editor) runAction(action string) {
 		e.Mode = ModeNormal
 		e.pendingKey = 0
 		e.ignoreNextJ = true
+		e.ignoreNextJTime = time.Now()
 	}
 }
 
@@ -421,20 +458,34 @@ func (e *Editor) handleInsertKey(k terminal.Key) {
 		return
 	}
 
+	// Debounce: if this key was just inserted as the second key of a non-matching chord, skip duplicate (e.g. "j" then "a" -> "ja" not "jaa").
+	const debounceMs = 120
+	if e.lastInsertKey != "" && keyStr == e.lastInsertKey && time.Since(e.lastInsertKeyTime) < debounceMs*time.Millisecond {
+		e.lastInsertKey = ""
+		return
+	}
+	e.lastInsertKey = ""
+
 	if e.Config != nil && e.Config.Keybinds != nil {
 		if e.pendingKey != 0 {
 			compound := string(e.pendingKey) + keyStr
 			saved := e.pendingKey
 			e.pendingKey = 0
 			if action := e.Config.Keybinds.Action("insert", compound); action != "" {
+				e.setStatusKeybind(compound, action)
 				e.runAction(action)
 				return
 			}
-			// No binding for chord: insert first char, then handle current key
+			// No binding for chord: insert first char and current key, then return to avoid double processing
 			e.Buf.InsertRune(saved)
+			e.Buf.InsertRune(k.Rune)
+			e.lastInsertKey = keyStr
+			e.lastInsertKeyTime = time.Now()
+			return
 		}
 		if e.pendingKey == 0 {
 			if action := e.Config.Keybinds.Action("insert", keyStr); action != "" {
+				e.setStatusKeybind(keyStr, action)
 				e.runAction(action)
 				return
 			}

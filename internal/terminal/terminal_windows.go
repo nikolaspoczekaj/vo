@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"time"
 
 	"golang.org/x/sys/windows"
@@ -24,7 +25,9 @@ type windowsTerm struct {
 	state         *term.State
 	reader        *bufio.Reader
 	outModeSaved  uint32
-	outVTEnabled bool
+	outVTEnabled  bool
+	mu            sync.Mutex
+	pendingResult chan keyResult // after timeout, goroutine may send here; next read consumes it
 }
 
 // New returns the Windows implementation of the terminal. Enables Virtual Terminal Processing for stdout so clear/cursor sequences work.
@@ -95,6 +98,14 @@ func (t *windowsTerm) Close() error {
 }
 
 func (t *windowsTerm) ReadKey() (Key, error) {
+	t.mu.Lock()
+	ch := t.pendingResult
+	t.pendingResult = nil
+	t.mu.Unlock()
+	if ch != nil {
+		res := <-ch
+		return res.key, res.err
+	}
 	return parseKeyFromReader(t.reader)
 }
 
@@ -102,20 +113,28 @@ func (t *windowsTerm) ReadKeyWithTimeout(timeoutMs int) (Key, error) {
 	if timeoutMs <= 0 {
 		return t.ReadKey()
 	}
-	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
-	t.stdin.SetReadDeadline(deadline)
-	b, err := t.reader.ReadByte()
-	t.stdin.SetReadDeadline(time.Time{})
-	if err != nil {
-		if isTimeout(err) {
-			return Key{}, ErrTimeout
-		}
-		return Key{}, err
+	t.mu.Lock()
+	ch := t.pendingResult
+	t.pendingResult = nil
+	t.mu.Unlock()
+	if ch != nil {
+		res := <-ch
+		return res.key, res.err
 	}
-	if err := t.reader.UnreadByte(); err != nil {
-		return Key{}, err
+	resultCh := make(chan keyResult, 1)
+	go func() {
+		k, err := parseKeyFromReader(t.reader)
+		resultCh <- keyResult{k, err}
+	}()
+	select {
+	case res := <-resultCh:
+		return res.key, res.err
+	case <-time.After(time.Duration(timeoutMs) * time.Millisecond):
+		t.mu.Lock()
+		t.pendingResult = resultCh
+		t.mu.Unlock()
+		return Key{}, ErrTimeout
 	}
-	return parseKeyWithFirstByte(b, t.reader)
 }
 
 func (t *windowsTerm) Size() (rows, cols int, err error) {
@@ -169,9 +188,3 @@ func (t *windowsTerm) Flush() error {
 
 func (t *windowsTerm) Stdin() io.Reader  { return t.stdin }
 func (t *windowsTerm) Stdout() io.Writer { return t.stdout }
-
-func isTimeout(err error) bool {
-	type timeout interface{ Timeout() bool }
-	t, ok := err.(timeout)
-	return ok && t.Timeout()
-}

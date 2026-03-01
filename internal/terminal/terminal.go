@@ -10,6 +10,12 @@ import (
 // ErrTimeout is returned by ReadKeyWithTimeout when no key was read within the timeout.
 var ErrTimeout = errors.New("key read timeout")
 
+// keyResult is used by platform implementations for buffering a key after timeout.
+type keyResult struct {
+	key Key
+	err error
+}
+
 // Key represents a pressed key (special key or rune).
 type Key struct {
 	Rune rune

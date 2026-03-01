@@ -7,16 +7,19 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"time"
 
 	"golang.org/x/term"
 )
 
 type unixTerm struct {
-	stdin  *os.File
-	stdout *os.File
-	state  *term.State
-	reader *bufio.Reader
+	stdin         *os.File
+	stdout        *os.File
+	state         *term.State
+	reader        *bufio.Reader
+	mu            sync.Mutex
+	pendingResult chan keyResult
 }
 
 // New returns the Unix implementation of the terminal (raw mode, ANSI).
@@ -52,6 +55,14 @@ func (t *unixTerm) Close() error {
 }
 
 func (t *unixTerm) ReadKey() (Key, error) {
+	t.mu.Lock()
+	ch := t.pendingResult
+	t.pendingResult = nil
+	t.mu.Unlock()
+	if ch != nil {
+		res := <-ch
+		return res.key, res.err
+	}
 	return parseKeyFromReader(t.reader)
 }
 
@@ -59,20 +70,28 @@ func (t *unixTerm) ReadKeyWithTimeout(timeoutMs int) (Key, error) {
 	if timeoutMs <= 0 {
 		return t.ReadKey()
 	}
-	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
-	t.stdin.SetReadDeadline(deadline)
-	b, err := t.reader.ReadByte()
-	t.stdin.SetReadDeadline(time.Time{})
-	if err != nil {
-		if isTimeout(err) {
-			return Key{}, ErrTimeout
-		}
-		return Key{}, err
+	t.mu.Lock()
+	ch := t.pendingResult
+	t.pendingResult = nil
+	t.mu.Unlock()
+	if ch != nil {
+		res := <-ch
+		return res.key, res.err
 	}
-	if err := t.reader.UnreadByte(); err != nil {
-		return Key{}, err
+	resultCh := make(chan keyResult, 1)
+	go func() {
+		k, err := parseKeyFromReader(t.reader)
+		resultCh <- keyResult{k, err}
+	}()
+	select {
+	case res := <-resultCh:
+		return res.key, res.err
+	case <-time.After(time.Duration(timeoutMs) * time.Millisecond):
+		t.mu.Lock()
+		t.pendingResult = resultCh
+		t.mu.Unlock()
+		return Key{}, ErrTimeout
 	}
-	return parseKeyWithFirstByte(b, t.reader)
 }
 
 func (t *unixTerm) Size() (rows, cols int, err error) {
@@ -113,9 +132,3 @@ func (t *unixTerm) Flush() error {
 
 func (t *unixTerm) Stdin() io.Reader  { return t.stdin }
 func (t *unixTerm) Stdout() io.Writer { return t.stdout }
-
-func isTimeout(err error) bool {
-	type timeout interface{ Timeout() bool }
-	t, ok := err.(timeout)
-	return ok && t.Timeout()
-}
