@@ -54,6 +54,8 @@ type Editor struct {
 	// scrollRow is the 0-based index of the first visible line. Updated when cursor
 	// moves within scroll_margin of the top or bottom of the visible area.
 	scrollRow int
+	// scrollCol is the display column (0-based) of the left edge of the content area; used for horizontal scrolling of long lines.
+	scrollCol int
 }
 
 // NewEditor creates an editor with buffer and terminal. config may be nil; then DefaultConfig() is used.
@@ -166,7 +168,7 @@ func (e *Editor) RedrawTitleBar() {
 	}
 	startRow := e.scrollRow
 	const lineNumWidth = 5
-	const lineNumGap = 1
+	const lineNumGap = 2
 	contentStartCol := lineNumWidth + lineNumGap + 1
 	contentWidth := cols - (lineNumWidth + lineNumGap)
 	if contentWidth < 1 {
@@ -230,7 +232,11 @@ func (e *Editor) RedrawTitleBar() {
 	sb.WriteString(clearToEnd)
 
 	curRow := e.Buf.Row - startRow + 2
-	curCol := contentStartCol + byteOffsetToDisplayCol(e.Buf.CurrentLine(), e.Buf.Col, tabSize)
+	cursorDisplayCol := byteOffsetToDisplayCol(e.Buf.CurrentLine(), e.Buf.Col, tabSize)
+	curCol := contentStartCol + (cursorDisplayCol - e.scrollCol)
+	if curCol < contentStartCol {
+		curCol = contentStartCol
+	}
 	if curCol > contentStartCol+contentWidth-1 {
 		curCol = contentStartCol + contentWidth - 1
 	}
@@ -306,7 +312,7 @@ func (e *Editor) Redraw() {
 		lineNumStyleOff = "\x1b[0m"
 	)
 	const lineNumWidth = 5
-	const lineNumGap  = 1   // gap between number and line content
+	const lineNumGap  = 2   // gap between number and line content
 	contentStartCol  := lineNumWidth + lineNumGap + 1
 	contentWidth     := cols - (lineNumWidth + lineNumGap)
 	if contentWidth < 1 {
@@ -318,6 +324,27 @@ func (e *Editor) Redraw() {
 		tabSize = e.Config.IndentSize()
 	}
 	move := func(row, col int) string { return fmt.Sprintf("\x1b[%d;%dH", row, col) }
+
+	// Update horizontal scroll so cursor stays visible in the content area.
+	currentExpanded := expandTabs(e.Buf.CurrentLine(), tabSize)
+	cursorDisplayCol := byteOffsetToDisplayCol(e.Buf.CurrentLine(), e.Buf.Col, tabSize)
+	lineWidth := len([]rune(currentExpanded))
+	if cursorDisplayCol < e.scrollCol {
+		e.scrollCol = cursorDisplayCol
+	}
+	if cursorDisplayCol >= e.scrollCol+contentWidth {
+		e.scrollCol = cursorDisplayCol - contentWidth + 1
+	}
+	if e.scrollCol < 0 {
+		e.scrollCol = 0
+	}
+	maxScrollCol := lineWidth - contentWidth
+	if maxScrollCol < 0 {
+		maxScrollCol = 0
+	}
+	if e.scrollCol > maxScrollCol {
+		e.scrollCol = maxScrollCol
+	}
 
 	var sb strings.Builder
 	sb.Grow(256 * (textRows + 3))
@@ -389,10 +416,8 @@ func (e *Editor) Redraw() {
 		sb.WriteString(move(i+2, contentStartCol))
 		if i < len(visible) {
 			line := visible[i]
-			line = expandTabs(line, tabSize)
-			if len(line) > contentWidth {
-				line = line[:contentWidth]
-			}
+			expanded := expandTabs(line, tabSize)
+			line = visibleLineSlice(expanded, e.scrollCol, contentWidth)
 			sb.WriteString(line)
 		}
 		sb.WriteString(clearToEnd)
@@ -426,7 +451,10 @@ func (e *Editor) Redraw() {
 	sb.WriteString(clearToEnd)
 
 	curRow := e.Buf.Row - startRow + 2 // +2 because row 1 is title bar
-	curCol := contentStartCol + byteOffsetToDisplayCol(e.Buf.CurrentLine(), e.Buf.Col, tabSize)
+	curCol := contentStartCol + (cursorDisplayCol - e.scrollCol)
+	if curCol < contentStartCol {
+		curCol = contentStartCol
+	}
 	if curCol > contentStartCol+contentWidth-1 {
 		curCol = contentStartCol + contentWidth - 1
 	}
@@ -466,6 +494,20 @@ func expandTabs(s string, tabSize int) string {
 		}
 	}
 	return b.String()
+}
+
+// visibleLineSlice returns the substring of expanded (tabs already expanded) that occupies the display columns [scrollCol, scrollCol+width). One rune = one column.
+func visibleLineSlice(expanded string, scrollCol, width int) string {
+	runes := []rune(expanded)
+	if scrollCol >= len(runes) {
+		return ""
+	}
+	start := scrollCol
+	end := start + width
+	if end > len(runes) {
+		end = len(runes)
+	}
+	return string(runes[start:end])
 }
 
 // byteOffsetToDisplayCol returns the display column (0-based) for the byte offset in s (tabs expanded).
