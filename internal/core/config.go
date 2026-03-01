@@ -22,8 +22,9 @@ func DefaultConfig() *Config {
 			"indent":              "4",
 			"language":            "en",
 			"title":               "vo - a vim-like editor",
-			"title_time_format":   "dd.MM.yy hh:mm",
-		},
+		"title_time_format":   "dd.MM.yy hh:mm",
+		"scroll_margin":       "0",
+	},
 		Keybinds: defaultKeybinds(),
 	}
 }
@@ -99,6 +100,23 @@ func (c *Config) TitleTimeFormat() string {
 		return "dd.MM.yy hh:mm"
 	}
 	return strings.TrimSpace(c.Options["title_time_format"])
+}
+
+// ScrollMargin returns how many lines from the top/bottom of the visible area trigger scrolling.
+// 0 = scroll only when cursor reaches the very top or bottom line. Default 0.
+func (c *Config) ScrollMargin() int {
+	if c == nil || c.Options == nil {
+		return 0
+	}
+	s := strings.TrimSpace(c.Options["scroll_margin"])
+	if s == "" {
+		return 0
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 0 {
+		return 0
+	}
+	return n
 }
 
 // LoadConfig loads vo.conf line by line. Empty lines and # lines are ignored.
@@ -231,6 +249,9 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if _, ok := cfg.Options["title_time_format"]; !ok {
 		cfg.Options["title_time_format"] = "dd.MM.yy hh:mm"
+	}
+	if _, ok := cfg.Options["scroll_margin"]; !ok {
+		cfg.Options["scroll_margin"] = "0"
 	}
 
 	return cfg, nil

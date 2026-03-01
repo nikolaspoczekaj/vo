@@ -68,6 +68,7 @@ Vo looks for `vo.conf` in the current directory at startup. The file is line-bas
 | `language` | `language en` | UI language: `en` or `de` |
 | `title` | `title vo - my editor` | Title bar text |
 | `title_time_format` | `title_time_format dd.MM.yy hh:mm:ss` | Date/time format (placeholders: `dd`, `MM`, `yy`, `yyyy`, `hh`, `mm`, `ss`) |
+| `scroll_margin` | `scroll_margin 3` | Lines from top/bottom at which view scrolls (0 = only at very top/bottom) |
 
 **Keybindings:**
 
