@@ -21,6 +21,8 @@ func DefaultConfig() *Config {
 			"relative_linenumber": "false",
 			"indent":              "4",
 			"language":            "en",
+			"title":               "nim - a vim-like editor",
+			"title_time_format":   "dd.MM.yy hh:mm",
 		},
 		Keybinds: defaultKeybinds(),
 	}
@@ -79,7 +81,27 @@ func (c *Config) Language() string {
 	return s
 }
 
-// LoadConfig loads nim.conf line by line. Empty lines and # lines are ignored.
+// Title returns the title bar text. Default "nim - a vim-like editor".
+func (c *Config) Title() string {
+	if c == nil || c.Options == nil {
+		return "nim - a vim-like editor"
+	}
+	s := strings.TrimSpace(c.Options["title"])
+	if s == "" {
+		return "nim - a vim-like editor"
+	}
+	return s
+}
+
+// TitleTimeFormat returns the time format for the title bar. Supports placeholders: dd, MM, yy, yyyy, hh, mm, ss (e.g. "dd.MM.yy hh:mm:ss"). Empty = hide time.
+func (c *Config) TitleTimeFormat() string {
+	if c == nil || c.Options == nil {
+		return "dd.MM.yy hh:mm"
+	}
+	return strings.TrimSpace(c.Options["title_time_format"])
+}
+
+// LoadConfig loads nim.conf line by line. Empty lines and # lines are ignored. nim.conf line by line. Empty lines and # lines are ignored.
 // Options: "timeout 300" or "timeout = 300". Keybinds: "keybind <mode> <keys> <action>".
 // Config is loaded once and kept in memory.
 func LoadConfig(path string) (*Config, error) {
@@ -141,6 +163,24 @@ func LoadConfig(path string) (*Config, error) {
 			}
 			continue
 		}
+		if strings.HasPrefix(line, "title ") {
+			rest := strings.TrimSpace(strings.TrimPrefix(line, "title"))
+			rest = strings.TrimPrefix(rest, "=")
+			rest = strings.TrimSpace(rest)
+			if rest != "" {
+				cfg.Options["title"] = rest
+			}
+			continue
+		}
+		if strings.HasPrefix(line, "title_time_format") {
+			rest := strings.TrimSpace(strings.TrimPrefix(line, "title_time_format"))
+			rest = strings.TrimPrefix(rest, "=")
+			rest = strings.TrimSpace(rest)
+			if rest != "" {
+				cfg.Options["title_time_format"] = rest
+			}
+			continue
+		}
 		// keybind <mode> <keys> <action>
 		if strings.HasPrefix(line, "keybind ") {
 			parts := strings.Fields(strings.TrimSpace(strings.TrimPrefix(line, "keybind")))
@@ -185,6 +225,12 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if _, ok := cfg.Options["language"]; !ok {
 		cfg.Options["language"] = "en"
+	}
+	if _, ok := cfg.Options["title"]; !ok {
+		cfg.Options["title"] = "nim - a vim-like editor"
+	}
+	if _, ok := cfg.Options["title_time_format"]; !ok {
+		cfg.Options["title_time_format"] = "dd.MM.yy hh:mm"
 	}
 
 	return cfg, nil

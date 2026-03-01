@@ -88,7 +88,12 @@ func (e *Editor) Run() error {
 				continue
 			}
 		} else {
-			key, err = e.Term.ReadKey()
+			// Wait up to 1 second for a key; on timeout only redraw title bar so the time updates.
+			key, err = e.Term.ReadKeyWithTimeout(1000)
+			if err == terminal.ErrTimeout {
+				e.RedrawTitleBar()
+				continue
+			}
 		}
 		if err != nil {
 			return err
@@ -98,17 +103,134 @@ func (e *Editor) Run() error {
 	return nil
 }
 
-// Redraw paints the visible area and the status line. Cursor is hidden while drawing; output is
-// written in one go and flushed once to avoid flicker.
-func (e *Editor) Redraw() {
+// userTimeFormatToGo converts placeholders dd.MM.yy hh:mm:ss to Go format (02.01.06 15:04:05).
+// Placeholders: dd=day, MM=month, yy=2-digit year, yyyy=4-digit year, hh=hour, mm=min, ss=sec.
+func userTimeFormatToGo(user string) string {
+	s := user
+	// Replace longest first so "yy" doesn't match inside "yyyy"
+	repl := []struct{ from, to string }{
+		{"yyyy", "2006"},
+		{"dd", "02"},
+		{"MM", "01"},
+		{"yy", "06"},
+		{"hh", "15"},
+		{"mm", "04"},
+		{"ss", "05"},
+	}
+	for _, r := range repl {
+		s = strings.ReplaceAll(s, r.from, r.to)
+	}
+	return s
+}
+
+// RedrawTitleBar redraws only the title bar (row 1) with current time. Used for periodic time update when idle.
+// Hides cursor during draw and restores it to the correct buffer position afterward to avoid cursor flicker.
+func (e *Editor) RedrawTitleBar() {
 	rows, cols, _ := e.Term.Size()
-	if rows < 2 {
-		rows = 24
+	if rows < 3 {
+		rows = 25
 	}
 	if cols < 1 {
 		cols = 80
 	}
-	textRows := rows - 1
+	textRows := rows - 2
+	startRow := 0
+	if e.Buf.Row >= textRows {
+		startRow = e.Buf.Row - textRows + 1
+	}
+	const lineNumWidth = 5
+	const lineNumGap = 1
+	contentStartCol := lineNumWidth + lineNumGap + 1
+	contentWidth := cols - (lineNumWidth + lineNumGap)
+	if contentWidth < 1 {
+		contentWidth = 1
+	}
+	tabSize := 4
+	if e.Config != nil {
+		tabSize = e.Config.IndentSize()
+	}
+
+	move := func(row, col int) string { return fmt.Sprintf("\x1b[%d;%dH", row, col) }
+	const hideCursor = "\x1b[?25l"
+	const showCursor = "\x1b[?25h"
+	const cursorBlock = "\x1b[1 q"
+	const cursorBar = "\x1b[5 q"
+	const titleBarOn = "\x1b[100m\x1b[97m"
+	const statusBarOff = "\x1b[0m"
+	const clearToEnd = "\x1b[K"
+
+	titleCols := cols
+	if titleCols > 0 {
+		titleCols--
+	}
+	titleText := "nim - a vim-like editor"
+	timeStr := ""
+	if e.Config != nil {
+		titleText = e.Config.Title()
+		if userFmt := e.Config.TitleTimeFormat(); userFmt != "" {
+			goFmt := userTimeFormatToGo(userFmt)
+			timeStr = time.Now().Format(goFmt)
+		}
+	}
+	var sb strings.Builder
+	sb.WriteString(hideCursor)
+	sb.WriteString(move(1, 1))
+	sb.WriteString(titleBarOn)
+	if timeStr != "" {
+		if len(titleText)+1+len(timeStr) <= titleCols {
+			sb.WriteString(titleText)
+			sb.WriteString(strings.Repeat(" ", titleCols-len(titleText)-len(timeStr)))
+			sb.WriteString(timeStr)
+		} else {
+			trunc := titleText
+			if len(trunc) > titleCols-len(timeStr)-1 {
+				trunc = trunc[:titleCols-len(timeStr)-1]
+			}
+			sb.WriteString(trunc)
+			sb.WriteString(strings.Repeat(" ", titleCols-len(trunc)-len(timeStr)))
+			sb.WriteString(timeStr)
+		}
+	} else {
+		sb.WriteString(titleText)
+		for i := len(titleText); i < titleCols; i++ {
+			sb.WriteByte(' ')
+		}
+	}
+	for i := titleCols; i < cols; i++ {
+		sb.WriteByte(' ')
+	}
+	sb.WriteString(statusBarOff)
+	sb.WriteString(clearToEnd)
+
+	curRow := e.Buf.Row - startRow + 2
+	curCol := contentStartCol + byteOffsetToDisplayCol(e.Buf.CurrentLine(), e.Buf.Col, tabSize)
+	if curCol > contentStartCol+contentWidth-1 {
+		curCol = contentStartCol + contentWidth - 1
+	}
+	if curRow >= 2 && curRow <= rows-1 {
+		sb.WriteString(move(curRow, curCol))
+		if e.Mode == ModeInsert {
+			sb.WriteString(cursorBar)
+		} else {
+			sb.WriteString(cursorBlock)
+		}
+	}
+	sb.WriteString(showCursor)
+	e.Term.Write(sb.String())
+	e.Term.Flush()
+}
+
+// Redraw paints the visible area, title bar, and status line. Cursor is hidden while drawing; output is
+// written in one go and flushed once to avoid flicker.
+func (e *Editor) Redraw() {
+	rows, cols, _ := e.Term.Size()
+	if rows < 3 {
+		rows = 25
+	}
+	if cols < 1 {
+		cols = 80
+	}
+	textRows := rows - 2 // one row title bar, one row status bar
 	e.Buf.ClampCursor()
 	startRow := 0
 	if e.Buf.Row >= textRows {
@@ -122,6 +244,7 @@ func (e *Editor) Redraw() {
 		cursorBlock    = "\x1b[1 q"  // blinking block (full cell) for Normal/Command
 		cursorBar      = "\x1b[5 q"  // blinking bar (thin) for Insert
 		clearToEnd     = "\x1b[K"
+		titleBarOn     = "\x1b[100m\x1b[97m" // same style as status bar (dark gray bg, white text)
 		statusBarOn    = "\x1b[100m\x1b[97m"
 		statusBarOff   = "\x1b[0m"
 		lineNumStyle   = "\x1b[90m" // dim gray for line numbers
@@ -142,11 +265,53 @@ func (e *Editor) Redraw() {
 	move := func(row, col int) string { return fmt.Sprintf("\x1b[%d;%dH", row, col) }
 
 	var sb strings.Builder
-	sb.Grow(256 * (textRows + 2))
+	sb.Grow(256 * (textRows + 3))
 	sb.WriteString(hideCursor)
 
+	// Title bar (row 1): title left, date/time right. Use titleCols = cols-1 so the last column is not written (avoids cutoff on some terminals).
+	titleCols := cols
+	if titleCols > 0 {
+		titleCols--
+	}
+	sb.WriteString(move(1, 1))
+	sb.WriteString(titleBarOn)
+	titleText := "nim - a vim-like editor"
+	timeStr := ""
+	if e.Config != nil {
+		titleText = e.Config.Title()
+		if userFmt := e.Config.TitleTimeFormat(); userFmt != "" {
+			goFmt := userTimeFormatToGo(userFmt)
+			timeStr = time.Now().Format(goFmt)
+		}
+	}
+	if timeStr != "" {
+		if len(titleText)+1+len(timeStr) <= titleCols {
+			sb.WriteString(titleText)
+			sb.WriteString(strings.Repeat(" ", titleCols-len(titleText)-len(timeStr)))
+			sb.WriteString(timeStr)
+		} else {
+			trunc := titleText
+			if len(trunc) > titleCols-len(timeStr)-1 {
+				trunc = trunc[:titleCols-len(timeStr)-1]
+			}
+			sb.WriteString(trunc)
+			sb.WriteString(strings.Repeat(" ", titleCols-len(trunc)-len(timeStr)))
+			sb.WriteString(timeStr)
+		}
+	} else {
+		sb.WriteString(titleText)
+		for i := len(titleText); i < titleCols; i++ {
+			sb.WriteByte(' ')
+		}
+	}
+	for i := titleCols; i < cols; i++ {
+		sb.WriteByte(' ')
+	}
+	sb.WriteString(statusBarOff)
+	sb.WriteString(clearToEnd)
+
 	for i := 0; i < textRows; i++ {
-		sb.WriteString(move(i+1, 1))
+		sb.WriteString(move(i+2, 1))
 		lineRow := startRow + i
 		var num int
 		if relativeNum {
@@ -166,7 +331,7 @@ func (e *Editor) Redraw() {
 		sb.WriteString(fmt.Sprintf("%*d", lineNumWidth, num))
 		sb.WriteString(lineNumStyleOff)
 		sb.WriteString(" ")
-		sb.WriteString(move(i+1, contentStartCol))
+		sb.WriteString(move(i+2, contentStartCol))
 		if i < len(visible) {
 			line := visible[i]
 			line = expandTabs(line, tabSize)
@@ -205,12 +370,12 @@ func (e *Editor) Redraw() {
 	sb.WriteString(statusBarOff)
 	sb.WriteString(clearToEnd)
 
-	curRow := e.Buf.Row - startRow + 1
+	curRow := e.Buf.Row - startRow + 2 // +2 because row 1 is title bar
 	curCol := contentStartCol + byteOffsetToDisplayCol(e.Buf.CurrentLine(), e.Buf.Col, tabSize)
 	if curCol > contentStartCol+contentWidth-1 {
 		curCol = contentStartCol + contentWidth - 1
 	}
-	if curRow >= 1 && curRow <= rows {
+	if curRow >= 2 && curRow <= rows-1 {
 		sb.WriteString(move(curRow, curCol))
 		// Cursor shape: block in Normal/Command, thin bar in Insert
 		if e.Mode == ModeInsert {

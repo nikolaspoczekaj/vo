@@ -72,11 +72,17 @@ func (t *unixTerm) ReadKeyWithTimeout(timeoutMs int) (Key, error) {
 	}
 	t.mu.Lock()
 	ch := t.pendingResult
-	t.pendingResult = nil
 	t.mu.Unlock()
 	if ch != nil {
-		res := <-ch
-		return res.key, res.err
+		select {
+		case res := <-ch:
+			t.mu.Lock()
+			t.pendingResult = nil
+			t.mu.Unlock()
+			return res.key, res.err
+		case <-time.After(time.Duration(timeoutMs) * time.Millisecond):
+			return Key{}, ErrTimeout
+		}
 	}
 	resultCh := make(chan keyResult, 1)
 	go func() {
