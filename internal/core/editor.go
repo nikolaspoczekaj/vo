@@ -107,12 +107,14 @@ func (e *Editor) Redraw() {
 	visible := e.Buf.VisibleLines(startRow, textRows)
 
 	const (
-		hideCursor    = "\x1b[?25l"
-		showCursor    = "\x1b[?25h"
-		clearToEnd    = "\x1b[K"
-		statusBarOn   = "\x1b[100m\x1b[97m"
-		statusBarOff  = "\x1b[0m"
-		lineNumStyle  = "\x1b[90m" // dim gray for line numbers
+		hideCursor     = "\x1b[?25l"
+		showCursor     = "\x1b[?25h"
+		cursorBlock    = "\x1b[1 q"  // blinking block (full cell) for Normal/Command
+		cursorBar      = "\x1b[5 q"  // blinking bar (thin) for Insert
+		clearToEnd     = "\x1b[K"
+		statusBarOn    = "\x1b[100m\x1b[97m"
+		statusBarOff   = "\x1b[0m"
+		lineNumStyle   = "\x1b[90m" // dim gray for line numbers
 		lineNumStyleOff = "\x1b[0m"
 	)
 	const lineNumWidth = 5
@@ -187,6 +189,12 @@ func (e *Editor) Redraw() {
 	}
 	if curRow >= 1 && curRow <= rows {
 		sb.WriteString(move(curRow, curCol))
+		// Cursor shape: block in Normal/Command, thin bar in Insert
+		if e.Mode == ModeInsert {
+			sb.WriteString(cursorBar)
+		} else {
+			sb.WriteString(cursorBlock)
+		}
 	}
 	sb.WriteString(showCursor)
 
