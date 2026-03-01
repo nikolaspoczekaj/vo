@@ -1,10 +1,10 @@
-# Nim – Vim-ähnlicher Editor in Go
+# Vo – Vim-ähnlicher Editor in Go
 
 Minimaler Terminal-Editor für Linux und Windows mit klarer Trennung von Core-Logik und betriebssystemspezifischem Code.
 
 ## Projektstruktur
 
-- **`main.go`** – Einstiegspunkt, CLI `nim [dateiname]`
+- **`main.go`** – Einstiegspunkt, CLI `vo [dateiname]`
 - **`internal/core/`** – plattformunabhängige Editor-Logik
   - `buffer.go` – Textpuffer, Laden/Speichern, Cursor, Einfügen/Löschen
   - `editor.go` – Modi (Normal/Insert/Command), Hauptschleife, Tastenbehandlung
@@ -18,21 +18,21 @@ Minimaler Terminal-Editor für Linux und Windows mit klarer Trennung von Core-Lo
 
 ```bash
 go mod tidy
-go build -o nim .
-# bzw. unter Windows: nim.exe
+go build -o vo .
+# bzw. unter Windows: vo.exe
 ```
 
 Erste Datei bearbeiten:
 
 ```bash
-nim dateiname
+vo dateiname
 ```
 
 Falls die Datei nicht existiert, wird ein leerer Buffer geöffnet; beim ersten Speichern wird sie angelegt.
 
 ## Erster Meilenstein: Einfaches Bearbeiten
 
-- **`nim dateiname`** – Datei öffnen (oder leeren Buffer)
+- **`vo dateiname`** – Datei öffnen (oder leeren Buffer)
 - **Pfeiltasten** – Cursor bewegen
 - **`i`** – Insert-Modus (Text einfügen)
 - **`Esc`** – zurück in den Normal-Modus
@@ -41,9 +41,9 @@ Falls die Datei nicht existiert, wird ein leerer Buffer geöffnet; beim ersten S
 - **`:w`** – speichern, **`:q`** – beenden, **`:wq`** – speichern und beenden, **`:q!`** – beenden ohne zu speichern
 - **Strg+C** – sofort beenden
 
-## Konfiguration (nim.conf)
+## Konfiguration (vo.conf)
 
-Die Konfiguration wird aus **`nim.conf`** (im aktuellen Verzeichnis) **zeilenweise** gelesen und **einmal beim Start** in den Speicher geladen. Kein festes Dateiformat; Leerzeilen und Zeilen, die mit `#` beginnen, werden ignoriert.
+Die Konfiguration wird aus **`vo.conf`** (im aktuellen Verzeichnis) **zeilenweise** gelesen und **einmal beim Start** in den Speicher geladen. Kein festes Dateiformat; Leerzeilen und Zeilen, die mit `#` beginnen, werden ignoriert.
 
 **Optionen** (z. B. Timeout für Doppel-Tasten):
 

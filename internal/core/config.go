@@ -21,7 +21,7 @@ func DefaultConfig() *Config {
 			"relative_linenumber": "false",
 			"indent":              "4",
 			"language":            "en",
-			"title":               "nim - a vim-like editor",
+			"title":               "vo - a vim-like editor",
 			"title_time_format":   "dd.MM.yy hh:mm",
 		},
 		Keybinds: defaultKeybinds(),
@@ -81,14 +81,14 @@ func (c *Config) Language() string {
 	return s
 }
 
-// Title returns the title bar text. Default "nim - a vim-like editor".
+// Title returns the title bar text. Default "vo - a vim-like editor".
 func (c *Config) Title() string {
 	if c == nil || c.Options == nil {
-		return "nim - a vim-like editor"
+		return "vo - a vim-like editor"
 	}
 	s := strings.TrimSpace(c.Options["title"])
 	if s == "" {
-		return "nim - a vim-like editor"
+		return "vo - a vim-like editor"
 	}
 	return s
 }
@@ -101,7 +101,7 @@ func (c *Config) TitleTimeFormat() string {
 	return strings.TrimSpace(c.Options["title_time_format"])
 }
 
-// LoadConfig loads nim.conf line by line. Empty lines and # lines are ignored. nim.conf line by line. Empty lines and # lines are ignored.
+// LoadConfig loads vo.conf line by line. Empty lines and # lines are ignored.
 // Options: "timeout 300" or "timeout = 300". Keybinds: "keybind <mode> <keys> <action>".
 // Config is loaded once and kept in memory.
 func LoadConfig(path string) (*Config, error) {
@@ -227,7 +227,7 @@ func LoadConfig(path string) (*Config, error) {
 		cfg.Options["language"] = "en"
 	}
 	if _, ok := cfg.Options["title"]; !ok {
-		cfg.Options["title"] = "nim - a vim-like editor"
+		cfg.Options["title"] = "vo - a vim-like editor"
 	}
 	if _, ok := cfg.Options["title_time_format"]; !ok {
 		cfg.Options["title_time_format"] = "dd.MM.yy hh:mm"

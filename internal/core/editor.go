@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"nim/internal/terminal"
+	"github.com/nikolaspoczekaj/vo/internal/terminal"
 )
 
 // Mode is the current editor mode.
@@ -163,7 +163,7 @@ func (e *Editor) RedrawTitleBar() {
 	if titleCols > 0 {
 		titleCols--
 	}
-	titleText := "nim - a vim-like editor"
+	titleText := "vo - a vim-like editor"
 	timeStr := ""
 	if e.Config != nil {
 		titleText = e.Config.Title()
@@ -275,7 +275,7 @@ func (e *Editor) Redraw() {
 	}
 	sb.WriteString(move(1, 1))
 	sb.WriteString(titleBarOn)
-	titleText := "nim - a vim-like editor"
+	titleText := "vo - a vim-like editor"
 	timeStr := ""
 	if e.Config != nil {
 		titleText = e.Config.Title()
