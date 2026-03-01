@@ -1,55 +1,46 @@
-# Vo
+# Vo - a vim-like editor written in Go
 
-A minimal, terminal-based text editor in Go with a modal editing experience. Vo is **inspired by** [Vim](https://www.vim.org/) and [Neovim](https://neovim.io/)—it is not meant to replace or compete with them, but to offer a small, hackable codebase for learning and experimentation while keeping a familiar feel.
+Vo is **inspired by** [Vim](https://www.vim.org/) and [Neovim](https://neovim.io/)—it is not meant to replace or compete with them, but to offer an alternative implementation for all operating systems while keeping a familiar feel. Vo was created with the help of AI. Contributions are welcome.
 
----
-
-## Inspiration
-
-Vo draws ideas from the modal editing model and keybindings of **Vim** and **Neovim**. We are grateful to those projects and their communities. Vo is a separate, minimal implementation in Go, intended as a learning project and a lightweight editor—not as an alternative to the full-featured editors we were inspired by.
 
 ---
 
-## Features
+## Installation
 
-- **Modal editing**: Normal, Insert, and Command modes
-- **Cross-platform**: Linux, macOS, and Windows (single codebase, build tags for terminal I/O)
-- **Configurable**: Line-based `vo.conf` for options and keybindings (no JSON)
-- **i18n**: UI strings in English and German (configurable via `language` in config)
-- **Familiar motions**: `h`/`j`/`k`/`l`, `w`/`b` (word jumps), `gg`/`G`, `0`, `dd`, etc.
-- **Chords**: e.g. `jj` in Insert to return to Normal (with configurable timeout)
-- **Title bar**: Configurable title and date/time format
-- **Status bar**: Filename, mode, position; optional keybind feedback
-
----
-
-## Requirements
+### Requirements
 
 - **Go 1.21+**
-- Terminal with basic ANSI support (Windows: Windows Terminal or similar recommended)
+- **Git**
+- Terminal with basic ANSI support
 
----
-
-## Build and run
+Linux:
 
 ```bash
 git clone https://github.com/nikolaspoczekaj/vo.git
 cd vo
 go mod tidy
 go build -o vo .
+sudo chmod +x vo
+sudo cp vo /usr/local/bin/
 ```
 
 Windows:
 
 ```bash
+git clone https://github.com/nikolaspoczekaj/vo.git
+cd vo
+go mod tidy
 go build -o vo.exe .
+setx PATH "%PATH%;C:\path\to\vo\"
+## restart terminal
+
 ```
 
 Run:
 
 ```bash
-./vo                    # empty buffer
-./vo path/to/file.txt   # open file (creates on first save if missing)
+vo                    # empty buffer
+vo path/to/file.txt   # open file (creates on first save if missing)
 ```
 
 ---
