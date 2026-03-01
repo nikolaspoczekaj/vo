@@ -1,77 +1,110 @@
-# Vo – Vim-ähnlicher Editor in Go
+# Vo
 
-Minimaler Terminal-Editor für Linux und Windows mit klarer Trennung von Core-Logik und betriebssystemspezifischem Code.
+A minimal, terminal-based text editor in Go with a modal editing experience. Vo is **inspired by** [Vim](https://www.vim.org/) and [Neovim](https://neovim.io/)—it is not meant to replace or compete with them, but to offer a small, hackable codebase for learning and experimentation while keeping a familiar feel.
 
-## Projektstruktur
+---
 
-- **`main.go`** – Einstiegspunkt, CLI `vo [dateiname]`
-- **`internal/core/`** – plattformunabhängige Editor-Logik
-  - `buffer.go` – Textpuffer, Laden/Speichern, Cursor, Einfügen/Löschen
-  - `editor.go` – Modi (Normal/Insert/Command), Hauptschleife, Tastenbehandlung
-- **`internal/terminal/`** – Terminal-Zugriff
-  - `terminal.go` – gemeinsame Schnittstelle `Terminal`
-  - `keys.go`, `parser.go` – Tasten-Definitionen und ANSI-Parser (plattformübergreifend)
-  - `terminal_unix.go` – Linux/macOS (Build-Tag: `!windows`)
-  - `terminal_windows.go` – Windows (Build-Tag: `windows`)
+## Inspiration
 
-## Bauen und Ausführen
+Vo draws ideas from the modal editing model and keybindings of **Vim** and **Neovim**. We are grateful to those projects and their communities. Vo is a separate, minimal implementation in Go, intended as a learning project and a lightweight editor—not as an alternative to the full-featured editors we were inspired by.
+
+---
+
+## Features
+
+- **Modal editing**: Normal, Insert, and Command modes
+- **Cross-platform**: Linux, macOS, and Windows (single codebase, build tags for terminal I/O)
+- **Configurable**: Line-based `vo.conf` for options and keybindings (no JSON)
+- **i18n**: UI strings in English and German (configurable via `language` in config)
+- **Familiar motions**: `h`/`j`/`k`/`l`, `w`/`b` (word jumps), `gg`/`G`, `0`, `dd`, etc.
+- **Chords**: e.g. `jj` in Insert to return to Normal (with configurable timeout)
+- **Title bar**: Configurable title and date/time format
+- **Status bar**: Filename, mode, position; optional keybind feedback
+
+---
+
+## Requirements
+
+- **Go 1.21+**
+- Terminal with basic ANSI support (Windows: Windows Terminal or similar recommended)
+
+---
+
+## Build and run
 
 ```bash
+git clone https://github.com/nikolaspoczekaj/vo.git
+cd vo
 go mod tidy
 go build -o vo .
-# bzw. unter Windows: vo.exe
 ```
 
-Erste Datei bearbeiten:
+Windows:
 
 ```bash
-vo dateiname
+go build -o vo.exe .
 ```
 
-Falls die Datei nicht existiert, wird ein leerer Buffer geöffnet; beim ersten Speichern wird sie angelegt.
+Run:
 
-## Erster Meilenstein: Einfaches Bearbeiten
+```bash
+./vo                    # empty buffer
+./vo path/to/file.txt   # open file (creates on first save if missing)
+```
 
-- **`vo dateiname`** – Datei öffnen (oder leeren Buffer)
-- **Pfeiltasten** – Cursor bewegen
-- **`i`** – Insert-Modus (Text einfügen)
-- **`Esc`** – zurück in den Normal-Modus
-- **`a`** – Einfügen nach Cursor, **`A`** – Einfügen am Zeilenende
-- **`o`** / **`O`** – neue Zeile unter/über der aktuellen
-- **`:w`** – speichern, **`:q`** – beenden, **`:wq`** – speichern und beenden, **`:q!`** – beenden ohne zu speichern
-- **Strg+C** – sofort beenden
+---
 
-## Konfiguration (vo.conf)
+## Configuration (`vo.conf`)
 
-Die Konfiguration wird aus **`vo.conf`** (im aktuellen Verzeichnis) **zeilenweise** gelesen und **einmal beim Start** in den Speicher geladen. Kein festes Dateiformat; Leerzeilen und Zeilen, die mit `#` beginnen, werden ignoriert.
+Vo looks for `vo.conf` in the current directory at startup. The file is line-based; empty lines and lines starting with `#` are ignored.
 
-**Optionen** (z. B. Timeout für Doppel-Tasten):
+**Options** (examples):
 
-- `timeout 300` oder `timeout = 300` – Wartezeit in Millisekunden, bis ein zweiter Tastendruck (z. B. zweites **j** bei **jj**) nicht mehr als Tastenfolge gewertet wird. Standard: 300.
-- `relative_linenumber true` bzw. `false` – Bei `true` zeigen die Zeilennummern links den Abstand zur aktuellen Zeile (wie in Neovim), bei `false` die absolute Zeilennummer. Standard: false.
-- `indent <zahl>` – Anzahl Leerzeichen, die im Insert-Modus bei Tab eingefügt werden (z. B. `indent 4`). Standard: 4.
+| Option | Example | Description |
+|--------|---------|-------------|
+| `timeout` | `timeout 300` | Timeout in ms for chord keys (e.g. second `j` in `jj`) |
+| `relative_linenumber` | `relative_linenumber true` | Relative line numbers in the gutter |
+| `indent` | `indent 4` | Spaces inserted by Tab in Insert mode |
+| `language` | `language en` | UI language: `en` or `de` |
+| `title` | `title vo - my editor` | Title bar text |
+| `title_time_format` | `title_time_format dd.MM.yy hh:mm:ss` | Date/time format (placeholders: `dd`, `MM`, `yy`, `yyyy`, `hh`, `mm`, `ss`) |
 
-**Keybinds:**
-
-- `keybind <mode> <keys> <action>`
-- Modus: `normal`, `insert`, `command`
-- Keys: Einzelzeichen (`i`, `j`), Folgen (`dd`, `jj`) oder Sonderzeichen (`<Up>`, `<C-c>`)
-
-Beispielzeilen:
+**Keybindings:**
 
 ```
-timeout 300
+keybind <mode> <keys> <action>
+```
+
+Modes: `normal`, `insert`, `command`.  
+Keys: single key (`i`, `j`), sequence (`dd`, `jj`), or special (`<Up>`, `<C-c>`).
+
+Example:
+
+```
 keybind normal dd delete_line
 keybind insert jj normal_mode
 ```
 
-Im **Insert-Modus** kann **jj** wie Esc wirken (Wechsel in den Normal-Modus). Wird **j** nur einmal gedrückt oder kommt die zweite Taste nach Ablauf des Timeouts, wird **j** normal als Zeichen eingefügt.
+---
 
-Sonderzeichen: `<Up>`, `<Down>`, `<Left>`, `<Right>`, `<Enter>`, `<Backspace>`, `<Esc>`, `<Home>`, `<End>`, `<C-x>` (Strg+x).
+## Project structure
 
-Aktionen (u. a.): `move_left`, `move_right`, `move_up`, `move_down`, `move_line_start`, `move_line_end`, `split_line`, `delete_backspace`, `delete_line`, `insert`, `insert_after`, `insert_at_line_end`, `open_line_below`, `open_line_above`, `command_mode`, `quit`, `normal_mode` (nur Insert).
+| Path | Purpose |
+|------|---------|
+| `main.go` | Entry point, CLI, wiring |
+| `internal/core/` | Platform-agnostic editor logic (buffer, modes, keybinds, config, i18n) |
+| `internal/terminal/` | Terminal abstraction and OS-specific implementations (Unix / Windows) |
 
-## Abhängigkeiten
+Core is independent of OS; terminal I/O is behind the `Terminal` interface and selected by build tags (`windows` / `!windows`).
 
-- Go 1.21+
-- `golang.org/x/term` (Raw-Mode und Terminalgröße auf beiden Plattformen)
+---
+
+## Contributing
+
+Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines, code style, and how to submit changes.
+
+---
+
+## License
+
+See [LICENSE](LICENSE) in this repository.
