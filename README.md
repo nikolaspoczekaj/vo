@@ -49,6 +49,7 @@ Die Konfiguration wird aus **`nim.conf`** (im aktuellen Verzeichnis) **zeilenwei
 
 - `timeout 300` oder `timeout = 300` – Wartezeit in Millisekunden, bis ein zweiter Tastendruck (z. B. zweites **j** bei **jj**) nicht mehr als Tastenfolge gewertet wird. Standard: 300.
 - `relative_linenumber true` bzw. `false` – Bei `true` zeigen die Zeilennummern links den Abstand zur aktuellen Zeile (wie in Neovim), bei `false` die absolute Zeilennummer. Standard: false.
+- `indent <zahl>` – Anzahl Leerzeichen, die im Insert-Modus bei Tab eingefügt werden (z. B. `indent 4`). Standard: 4.
 
 **Keybinds:**
 

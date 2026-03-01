@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strings"
 )
 
 // Buffer hält den Text einer Datei und die Cursor-Position.
@@ -125,6 +126,21 @@ func (b *Buffer) InsertRune(r rune) {
 		b.Lines[b.Row] = left + string(r) + right
 		b.Col++
 	}
+	b.Dirty = true
+}
+
+// InsertSpaces fügt n Leerzeichen an der Cursor-Position ein (z. B. für Tab mit indent).
+func (b *Buffer) InsertSpaces(n int) {
+	if n <= 0 {
+		return
+	}
+	b.ClampCursor()
+	line := b.CurrentLine()
+	left := line[:b.Col]
+	right := line[b.Col:]
+	spaces := strings.Repeat(" ", n)
+	b.Lines[b.Row] = left + spaces + right
+	b.Col += n
 	b.Dirty = true
 }
 

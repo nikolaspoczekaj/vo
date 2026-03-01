@@ -125,6 +125,10 @@ func (e *Editor) Redraw() {
 		contentWidth = 1
 	}
 	relativeNum := e.Config != nil && e.Config.RelativeLineNumber()
+	tabSize := 4
+	if e.Config != nil {
+		tabSize = e.Config.IndentSize()
+	}
 	move := func(row, col int) string { return fmt.Sprintf("\x1b[%d;%dH", row, col) }
 
 	var sb strings.Builder
@@ -155,6 +159,7 @@ func (e *Editor) Redraw() {
 		sb.WriteString(move(i+1, contentStartCol))
 		if i < len(visible) {
 			line := visible[i]
+			line = expandTabs(line, tabSize)
 			if len(line) > contentWidth {
 				line = line[:contentWidth]
 			}
@@ -178,7 +183,7 @@ func (e *Editor) Redraw() {
 	sb.WriteString(clearToEnd)
 
 	curRow := e.Buf.Row - startRow + 1
-	curCol := contentStartCol + e.Buf.Col
+	curCol := contentStartCol + byteOffsetToDisplayCol(e.Buf.CurrentLine(), e.Buf.Col, tabSize)
 	if curCol > contentStartCol+contentWidth-1 {
 		curCol = contentStartCol + contentWidth - 1
 	}
@@ -189,6 +194,48 @@ func (e *Editor) Redraw() {
 
 	e.Term.Write(sb.String())
 	e.Term.Flush()
+}
+
+// expandTabs ersetzt Tabs durch Leerzeichen (tabSize Spalten pro Tab).
+func expandTabs(s string, tabSize int) string {
+	if tabSize <= 0 {
+		tabSize = 4
+	}
+	var b strings.Builder
+	col := 0
+	for _, r := range s {
+		if r == '\t' {
+			n := tabSize - (col % tabSize)
+			b.Grow(n)
+			for i := 0; i < n; i++ {
+				b.WriteByte(' ')
+			}
+			col += n
+		} else {
+			b.WriteRune(r)
+			col++
+		}
+	}
+	return b.String()
+}
+
+// byteOffsetToDisplayCol liefert die Anzeige-Spalte (0-basiert) für den Byte-Offset in s (Tabs expandiert).
+func byteOffsetToDisplayCol(s string, byteOff int, tabSize int) int {
+	if tabSize <= 0 {
+		tabSize = 4
+	}
+	col := 0
+	for i, r := range s {
+		if i >= byteOff {
+			return col
+		}
+		if r == '\t' {
+			col += tabSize - (col % tabSize)
+		} else {
+			col++
+		}
+	}
+	return col
 }
 
 func (e *Editor) statusText() string {
@@ -404,6 +451,12 @@ func (e *Editor) handleInsertKey(k terminal.Key) {
 		e.Buf.MoveLineStart()
 	case k.End:
 		e.Buf.MoveLineEnd()
+	case k.Rune == '\t' || k.Rune == terminal.KeyRuneTab:
+		n := 4
+		if e.Config != nil {
+			n = e.Config.IndentSize()
+		}
+		e.Buf.InsertSpaces(n)
 	case k.IsRune() && k.Rune != 0:
 		e.Buf.InsertRune(k.Rune)
 	}

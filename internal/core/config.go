@@ -19,6 +19,7 @@ func DefaultConfig() *Config {
 		Options: map[string]string{
 			"timeout":             "300",
 			"relative_linenumber": "false",
+			"indent":              "4",
 		},
 		Keybinds: defaultKeybinds(),
 	}
@@ -48,6 +49,22 @@ func (c *Config) RelativeLineNumber() bool {
 	}
 	s := strings.ToLower(strings.TrimSpace(c.Options["relative_linenumber"]))
 	return s == "true" || s == "1" || s == "yes"
+}
+
+// IndentSize liefert die Anzahl Leerzeichen für Tab im Insert-Modus. Standard 4.
+func (c *Config) IndentSize() int {
+	if c == nil || c.Options == nil {
+		return 4
+	}
+	s := strings.TrimSpace(c.Options["indent"])
+	if s == "" {
+		return 4
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 1 || n > 32 {
+		return 4
+	}
+	return n
 }
 
 // LoadConfig lädt nim.conf zeilenweise. Leerzeilen und #-Zeilen werden ignoriert.
@@ -95,6 +112,15 @@ func LoadConfig(path string) (*Config, error) {
 			}
 			continue
 		}
+		if strings.HasPrefix(line, "indent") {
+			rest := strings.TrimSpace(strings.TrimPrefix(line, "indent"))
+			rest = strings.TrimPrefix(rest, "=")
+			rest = strings.TrimSpace(rest)
+			if rest != "" {
+				cfg.Options["indent"] = rest
+			}
+			continue
+		}
 		// keybind <mode> <keys> <action>
 		if strings.HasPrefix(line, "keybind ") {
 			parts := strings.Fields(strings.TrimSpace(strings.TrimPrefix(line, "keybind")))
@@ -133,6 +159,9 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if _, ok := cfg.Options["relative_linenumber"]; !ok {
 		cfg.Options["relative_linenumber"] = "false"
+	}
+	if _, ok := cfg.Options["indent"]; !ok {
+		cfg.Options["indent"] = "4"
 	}
 
 	return cfg, nil
