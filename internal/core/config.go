@@ -16,7 +16,10 @@ type Config struct {
 // DefaultConfig liefert eine Konfiguration mit Standardwerten.
 func DefaultConfig() *Config {
 	return &Config{
-		Options:  map[string]string{"timeout": "300"},
+		Options: map[string]string{
+			"timeout":             "300",
+			"relative_linenumber": "false",
+		},
 		Keybinds: defaultKeybinds(),
 	}
 }
@@ -36,6 +39,15 @@ func (c *Config) PendingTimeoutMs() int {
 		return 300
 	}
 	return n
+}
+
+// RelativeLineNumber true = relative Zeilennummern (Abstand zur aktuellen Zeile), false = absolute.
+func (c *Config) RelativeLineNumber() bool {
+	if c == nil || c.Options == nil {
+		return false
+	}
+	s := strings.ToLower(strings.TrimSpace(c.Options["relative_linenumber"]))
+	return s == "true" || s == "1" || s == "yes"
 }
 
 // LoadConfig lädt nim.conf zeilenweise. Leerzeilen und #-Zeilen werden ignoriert.
@@ -74,6 +86,15 @@ func LoadConfig(path string) (*Config, error) {
 			}
 			continue
 		}
+		if strings.HasPrefix(line, "relative_linenumber") {
+			rest := strings.TrimSpace(strings.TrimPrefix(line, "relative_linenumber"))
+			rest = strings.TrimPrefix(rest, "=")
+			rest = strings.TrimSpace(rest)
+			if rest != "" {
+				cfg.Options["relative_linenumber"] = rest
+			}
+			continue
+		}
 		// keybind <mode> <keys> <action>
 		if strings.HasPrefix(line, "keybind ") {
 			parts := strings.Fields(strings.TrimSpace(strings.TrimPrefix(line, "keybind")))
@@ -109,6 +130,9 @@ func LoadConfig(path string) (*Config, error) {
 	// Timeout-Default falls nicht in Datei
 	if _, ok := cfg.Options["timeout"]; !ok {
 		cfg.Options["timeout"] = "300"
+	}
+	if _, ok := cfg.Options["relative_linenumber"]; !ok {
+		cfg.Options["relative_linenumber"] = "false"
 	}
 
 	return cfg, nil

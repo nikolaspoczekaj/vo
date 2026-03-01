@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"strings"
 
 	"nim/internal/terminal"
@@ -89,7 +90,8 @@ func (e *Editor) Run() error {
 }
 
 // Redraw zeichnet den sichtbaren Bereich und die Statuszeile.
-// Inkrementell ohne volles ClearScreen, um Flackern zu vermeiden.
+// Cursor wird während des Zeichnens ausgeblendet; die gesamte Ausgabe wird
+// in einem Stück geschrieben und einmal geflusht, um Flackern zu vermeiden.
 func (e *Editor) Redraw() {
 	rows, cols, _ := e.Term.Size()
 	if rows < 2 {
@@ -106,33 +108,86 @@ func (e *Editor) Redraw() {
 	}
 	visible := e.Buf.VisibleLines(startRow, textRows)
 
-	// Nur Zeilen überschreiben + Rest der Zeile löschen (kein volles ClearScreen)
-	const clearToEnd = "\x1b[K"
+	const (
+		hideCursor    = "\x1b[?25l"
+		showCursor    = "\x1b[?25h"
+		clearToEnd    = "\x1b[K"
+		statusBarOn   = "\x1b[100m\x1b[97m"
+		statusBarOff  = "\x1b[0m"
+		lineNumStyle  = "\x1b[90m" // gedämpftes Grau für Zeilennummern
+		lineNumStyleOff = "\x1b[0m"
+	)
+	const lineNumWidth = 5
+	const lineNumGap  = 1   // Leerstelle zwischen Nummer und Zeileninhalt
+	contentStartCol  := lineNumWidth + lineNumGap + 1
+	contentWidth     := cols - (lineNumWidth + lineNumGap)
+	if contentWidth < 1 {
+		contentWidth = 1
+	}
+	relativeNum := e.Config != nil && e.Config.RelativeLineNumber()
+	move := func(row, col int) string { return fmt.Sprintf("\x1b[%d;%dH", row, col) }
+
+	var sb strings.Builder
+	sb.Grow(256 * (textRows + 2))
+	sb.WriteString(hideCursor)
+
 	for i := 0; i < textRows; i++ {
-		e.Term.MoveCursor(i+1, 1)
+		sb.WriteString(move(i+1, 1))
+		lineRow := startRow + i
+		var num int
+		if relativeNum {
+			if lineRow == e.Buf.Row {
+				num = lineRow + 1
+			} else {
+				n := e.Buf.Row - lineRow
+				if n < 0 {
+					n = -n
+				}
+				num = n
+			}
+		} else {
+			num = lineRow + 1
+		}
+		sb.WriteString(lineNumStyle)
+		sb.WriteString(fmt.Sprintf("%*d", lineNumWidth, num))
+		sb.WriteString(lineNumStyleOff)
+		sb.WriteString(" ")
+		sb.WriteString(move(i+1, contentStartCol))
 		if i < len(visible) {
 			line := visible[i]
-			if len(line) > cols {
-				line = line[:cols]
+			if len(line) > contentWidth {
+				line = line[:contentWidth]
 			}
-			e.Term.Write(line)
+			sb.WriteString(line)
 		}
-		e.Term.Write(clearToEnd)
+		sb.WriteString(clearToEnd)
 	}
-	// Statuszeile
-	e.Term.MoveCursor(rows, 1)
+
+	sb.WriteString(move(rows, 1))
+	sb.WriteString(statusBarOn)
 	status := e.statusText()
 	if len(status) > cols {
 		status = status[:cols]
 	}
-	e.Term.Write(status)
-	e.Term.Write(clearToEnd)
-	// Cursor setzen
-	curRow := e.Buf.Row - startRow + 1
-	curCol := e.Buf.Col + 1
-	if curRow >= 1 && curRow <= rows {
-		e.Term.MoveCursor(curRow, curCol)
+	sb.WriteString(status)
+	// Rest der Zeile mit Hintergrundfarbe füllen (bis zum rechten Rand)
+	for i := len(status); i < cols; i++ {
+		sb.WriteByte(' ')
 	}
+	sb.WriteString(statusBarOff)
+	sb.WriteString(clearToEnd)
+
+	curRow := e.Buf.Row - startRow + 1
+	curCol := contentStartCol + e.Buf.Col
+	if curCol > contentStartCol+contentWidth-1 {
+		curCol = contentStartCol + contentWidth - 1
+	}
+	if curRow >= 1 && curRow <= rows {
+		sb.WriteString(move(curRow, curCol))
+	}
+	sb.WriteString(showCursor)
+
+	e.Term.Write(sb.String())
 	e.Term.Flush()
 }
 
