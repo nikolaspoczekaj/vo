@@ -50,6 +50,10 @@ type Editor struct {
 	// Show last executed keybind in status bar for a short time.
 	statusKeybind     string
 	statusKeybindUntil time.Time
+
+	// scrollRow is the 0-based index of the first visible line. Updated when cursor
+	// moves within scroll_margin of the top or bottom of the visible area.
+	scrollRow int
 }
 
 // NewEditor creates an editor with buffer and terminal. config may be nil; then DefaultConfig() is used.
@@ -134,10 +138,33 @@ func (e *Editor) RedrawTitleBar() {
 		cols = 80
 	}
 	textRows := rows - 2
-	startRow := 0
-	if e.Buf.Row >= textRows {
-		startRow = e.Buf.Row - textRows + 1
+	margin := 0
+	if e.Config != nil {
+		margin = e.Config.ScrollMargin()
 	}
+	maxScrollRow := 0
+	if len(e.Buf.Lines) > textRows {
+		maxScrollRow = len(e.Buf.Lines) - textRows
+	}
+	if e.scrollRow > maxScrollRow {
+		e.scrollRow = maxScrollRow
+	}
+	if e.scrollRow < 0 {
+		e.scrollRow = 0
+	}
+	cursorRow := e.Buf.Row
+	if cursorRow <= e.scrollRow+margin {
+		e.scrollRow = cursorRow - margin
+		if e.scrollRow < 0 {
+			e.scrollRow = 0
+		}
+	} else if cursorRow >= e.scrollRow+textRows-margin {
+		e.scrollRow = cursorRow - textRows + 1 + margin
+		if e.scrollRow > maxScrollRow {
+			e.scrollRow = maxScrollRow
+		}
+	}
+	startRow := e.scrollRow
 	const lineNumWidth = 5
 	const lineNumGap = 1
 	contentStartCol := lineNumWidth + lineNumGap + 1
@@ -232,10 +259,38 @@ func (e *Editor) Redraw() {
 	}
 	textRows := rows - 2 // one row title bar, one row status bar
 	e.Buf.ClampCursor()
-	startRow := 0
-	if e.Buf.Row >= textRows {
-		startRow = e.Buf.Row - textRows + 1
+
+	// Update scroll position: scroll down when cursor is within margin lines of bottom,
+	// scroll up when cursor is within margin lines of top. Otherwise keep scroll stable.
+	margin := 0
+	if e.Config != nil {
+		margin = e.Config.ScrollMargin()
 	}
+	maxScrollRow := 0
+	if len(e.Buf.Lines) > textRows {
+		maxScrollRow = len(e.Buf.Lines) - textRows
+	}
+	if e.scrollRow > maxScrollRow {
+		e.scrollRow = maxScrollRow
+	}
+	if e.scrollRow < 0 {
+		e.scrollRow = 0
+	}
+	cursorRow := e.Buf.Row
+	if cursorRow <= e.scrollRow+margin {
+		// Cursor at or above the "scroll up" line → scroll up so cursor is margin lines from top
+		e.scrollRow = cursorRow - margin
+		if e.scrollRow < 0 {
+			e.scrollRow = 0
+		}
+	} else if cursorRow >= e.scrollRow+textRows-margin {
+		// Cursor at or below the "scroll down" line → scroll down so cursor is margin lines from bottom
+		e.scrollRow = cursorRow - textRows + 1 + margin
+		if e.scrollRow > maxScrollRow {
+			e.scrollRow = maxScrollRow
+		}
+	}
+	startRow := e.scrollRow
 	visible := e.Buf.VisibleLines(startRow, textRows)
 
 	const (
