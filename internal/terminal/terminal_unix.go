@@ -19,7 +19,7 @@ type unixTerm struct {
 	reader *bufio.Reader
 }
 
-// New erstellt die Unix-Implementierung des Terminals (Raw-Mode, ANSI).
+// New returns the Unix implementation of the terminal (raw mode, ANSI).
 func New() (Terminal, error) {
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		return nil, fmt.Errorf("stdin is not a terminal")
@@ -37,13 +37,13 @@ func New() (Terminal, error) {
 }
 
 func (t *unixTerm) Init() error {
-	// Wechsel in den alternativen Bildschirmpuffer (kein Flackern, Scrollback bleibt erhalten)
+	// Switch to alternate screen buffer (no flicker, scrollback preserved)
 	_, _ = t.stdout.WriteString("\x1b[?1049h")
 	return nil
 }
 
 func (t *unixTerm) Close() error {
-	// Zurück zum Hauptbildschirmpuffer
+	// Back to main screen buffer
 	_, _ = t.stdout.WriteString("\x1b[?1049l")
 	if t.state != nil {
 		return term.Restore(int(t.stdin.Fd()), t.state)

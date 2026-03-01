@@ -1,13 +1,13 @@
 package core
 
-// Keybind definiert eine Tastenbindung: Modus, Tastenfolge, Aktion.
+// Keybind defines a key binding: mode, key sequence, action.
 type Keybind struct {
 	Mode   string
 	Keys   string
 	Action string
 }
 
-// KeybindConfig lädt und hält Keybinds; ermöglicht Lookup und Präfix-Prüfung für Mehrfach-Tasten (z. B. dd).
+// KeybindConfig holds keybinds; supports lookup and prefix check for chord keys (e.g. dd).
 type KeybindConfig struct {
 	Bindings []Keybind
 
@@ -17,7 +17,7 @@ type KeybindConfig struct {
 	prefix map[string]map[string]bool
 }
 
-// IsPrefix true, wenn keys ein Präfix einer längeren Bindung ist (z. B. "d" für "dd").
+// IsPrefix returns true if keys is a prefix of a longer binding (e.g. "d" for "dd").
 func (c *KeybindConfig) IsPrefix(mode, keys string) bool {
 	if c == nil || c.prefix == nil {
 		return false
@@ -25,7 +25,7 @@ func (c *KeybindConfig) IsPrefix(mode, keys string) bool {
 	return c.prefix[mode][keys]
 }
 
-// NewKeybindConfig baut aus einer Liste von Keybinds die Lookup-Maps.
+// NewKeybindConfig builds the lookup maps from a list of keybinds.
 func NewKeybindConfig(bindings []Keybind) *KeybindConfig {
 	lookup := make(map[string]map[string]string)
 	prefix := make(map[string]map[string]bool)
@@ -46,7 +46,7 @@ func NewKeybindConfig(bindings []Keybind) *KeybindConfig {
 	}
 }
 
-// Action liefert die Aktion für (mode, keys) oder "" wenn nicht vorhanden.
+// Action returns the action for (mode, keys) or "" if not found.
 func (c *KeybindConfig) Action(mode, keys string) string {
 	if c == nil || c.lookup == nil {
 		return ""

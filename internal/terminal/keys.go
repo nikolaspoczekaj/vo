@@ -1,6 +1,6 @@
 package terminal
 
-// Häufige Sonderzeichen als Konstanten.
+// Common special runes as constants.
 const (
 	KeyRuneEnter     = '\r'
 	KeyRuneBackspace = '\x7f'
@@ -8,8 +8,7 @@ const (
 	KeyRuneTab       = '\t'
 )
 
-// ConfigString liefert die in Keybind-Configs verwendete Bezeichnung für diese Taste.
-// z. B. "h", "<Up>", "<C-c>"
+// ConfigString returns the keybind-config name for this key, e.g. "h", "<Up>", "<C-c>".
 func (k Key) ConfigString() string {
 	if k.Up {
 		return "<Up>"

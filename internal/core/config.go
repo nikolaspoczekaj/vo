@@ -7,26 +7,26 @@ import (
 	"strings"
 )
 
-// Config hält die beim Start geladene Konfiguration (Optionen + Keybinds) im Speicher.
+// Config holds the configuration loaded at startup (options and keybinds).
 type Config struct {
-	Options  map[string]string  // z. B. "timeout" -> "300"
-	Keybinds *KeybindConfig     // aus keybind-Zeilen gebaut
+	Options  map[string]string  // e.g. "timeout" -> "300"
+	Keybinds *KeybindConfig     // built from keybind lines
 }
 
-// DefaultConfig liefert eine Konfiguration mit Standardwerten.
+// DefaultConfig returns a config with default values.
 func DefaultConfig() *Config {
 	return &Config{
 		Options: map[string]string{
 			"timeout":             "300",
 			"relative_linenumber": "false",
 			"indent":              "4",
+			"language":            "en",
 		},
 		Keybinds: defaultKeybinds(),
 	}
 }
 
-// PendingTimeoutMs liefert das Timeout in Millisekunden für Doppel-Tasten (z. B. jj).
-// Standard 300, wenn nicht gesetzt oder ungültig.
+// PendingTimeoutMs returns the timeout in milliseconds for chord keys (e.g. jj). Default 300 if unset or invalid.
 func (c *Config) PendingTimeoutMs() int {
 	if c == nil || c.Options == nil {
 		return 300
@@ -42,7 +42,7 @@ func (c *Config) PendingTimeoutMs() int {
 	return n
 }
 
-// RelativeLineNumber true = relative Zeilennummern (Abstand zur aktuellen Zeile), false = absolute.
+// RelativeLineNumber: true = relative line numbers (distance to current line), false = absolute.
 func (c *Config) RelativeLineNumber() bool {
 	if c == nil || c.Options == nil {
 		return false
@@ -51,7 +51,7 @@ func (c *Config) RelativeLineNumber() bool {
 	return s == "true" || s == "1" || s == "yes"
 }
 
-// IndentSize liefert die Anzahl Leerzeichen für Tab im Insert-Modus. Standard 4.
+// IndentSize returns the number of spaces for Tab in Insert mode. Default 4.
 func (c *Config) IndentSize() int {
 	if c == nil || c.Options == nil {
 		return 4
@@ -67,10 +67,21 @@ func (c *Config) IndentSize() int {
 	return n
 }
 
-// LoadConfig lädt nim.conf zeilenweise. Leerzeilen und #-Zeilen werden ignoriert.
-// Optionen: "timeout 300" oder "timeout = 300"
-// Keybinds: "keybind <mode> <keys> <action>"
-// Die gesamte Config wird einmal geladen und im Speicher gehalten.
+// Language returns the UI language code (e.g. "en", "de"). Default "en" if not set or invalid.
+func (c *Config) Language() string {
+	if c == nil || c.Options == nil {
+		return LangEN
+	}
+	s := strings.ToLower(strings.TrimSpace(c.Options["language"]))
+	if s == "" || (s != LangEN && s != LangDE) {
+		return LangEN
+	}
+	return s
+}
+
+// LoadConfig loads nim.conf line by line. Empty lines and # lines are ignored.
+// Options: "timeout 300" or "timeout = 300". Keybinds: "keybind <mode> <keys> <action>".
+// Config is loaded once and kept in memory.
 func LoadConfig(path string) (*Config, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -93,7 +104,7 @@ func LoadConfig(path string) (*Config, error) {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		// Option: timeout 300  oder  timeout = 300
+		// Option: timeout 300  or  timeout = 300
 		if strings.HasPrefix(line, "timeout") {
 			rest := strings.TrimSpace(strings.TrimPrefix(line, "timeout"))
 			rest = strings.TrimPrefix(rest, "=")
@@ -121,6 +132,15 @@ func LoadConfig(path string) (*Config, error) {
 			}
 			continue
 		}
+		if strings.HasPrefix(line, "language") {
+			rest := strings.TrimSpace(strings.TrimPrefix(line, "language"))
+			rest = strings.TrimPrefix(rest, "=")
+			rest = strings.TrimSpace(rest)
+			if rest != "" {
+				cfg.Options["language"] = rest
+			}
+			continue
+		}
 		// keybind <mode> <keys> <action>
 		if strings.HasPrefix(line, "keybind ") {
 			parts := strings.Fields(strings.TrimSpace(strings.TrimPrefix(line, "keybind")))
@@ -132,7 +152,7 @@ func LoadConfig(path string) (*Config, error) {
 			}
 			continue
 		}
-		// Weitere Optionen: name value  oder  name = value
+		// Other options: name value  or  name = value
 		if idx := strings.Index(line, " "); idx > 0 {
 			name := strings.TrimSpace(line[:idx])
 			rest := strings.TrimSpace(line[idx+1:])
@@ -153,7 +173,7 @@ func LoadConfig(path string) (*Config, error) {
 		cfg.Keybinds = defaultKeybinds()
 	}
 
-	// Timeout-Default falls nicht in Datei
+	// Defaults if not present in file
 	if _, ok := cfg.Options["timeout"]; !ok {
 		cfg.Options["timeout"] = "300"
 	}
@@ -163,11 +183,14 @@ func LoadConfig(path string) (*Config, error) {
 	if _, ok := cfg.Options["indent"]; !ok {
 		cfg.Options["indent"] = "4"
 	}
+	if _, ok := cfg.Options["language"]; !ok {
+		cfg.Options["language"] = "en"
+	}
 
 	return cfg, nil
 }
 
-// defaultKeybinds liefert die eingebauten Keybinds (wie bisher in keybinds.json).
+// defaultKeybinds returns the built-in keybinds.
 func defaultKeybinds() *KeybindConfig {
 	return NewKeybindConfig([]Keybind{
 		{Mode: "normal", Keys: "h", Action: "move_left"},

@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	// ENABLE_VIRTUAL_TERMINAL_PROCESSING aktiviert ANSI-Escapesequenzen in der Konsole (Windows 10+).
+	// ENABLE_VIRTUAL_TERMINAL_PROCESSING enables ANSI escape sequences in the console (Windows 10+).
 	enableVirtualTerminalProcessing = 0x0004
 )
 
@@ -27,8 +27,7 @@ type windowsTerm struct {
 	outVTEnabled bool
 }
 
-// New erstellt die Windows-Implementierung des Terminals.
-// Aktiviert Virtual Terminal Processing für stdout, damit Clear/Cursor-Sequenzen funktionieren.
+// New returns the Windows implementation of the terminal. Enables Virtual Terminal Processing for stdout so clear/cursor sequences work.
 func New() (Terminal, error) {
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		return nil, fmt.Errorf("stdin is not a terminal")
@@ -43,7 +42,7 @@ func New() (Terminal, error) {
 		state:  state,
 		reader: bufio.NewReader(os.Stdin),
 	}
-	// ANSI für stdout aktivieren (Bildschirm löschen, Cursor setzen)
+	// Enable ANSI for stdout (clear screen, set cursor)
 	if err := t.enableStdoutVT(); err != nil {
 		_ = term.Restore(int(t.stdin.Fd()), state)
 		return nil, fmt.Errorf("terminal: VT für Ausgabe aktivieren: %w", err)
@@ -51,8 +50,7 @@ func New() (Terminal, error) {
 	return t, nil
 }
 
-// enableStdoutVT aktiviert ENABLE_VIRTUAL_TERMINAL_PROCESSING auf der Konsole.
-// Wir nutzen GetStdHandle(STD_OUTPUT_HANDLE), damit die echte Konsole gemeint ist.
+// enableStdoutVT enables ENABLE_VIRTUAL_TERMINAL_PROCESSING on the console. Uses GetStdHandle(STD_OUTPUT_HANDLE) for the real console.
 func (t *windowsTerm) enableStdoutVT() error {
 	h, err := windows.GetStdHandle(windows.STD_OUTPUT_HANDLE)
 	if err != nil {
@@ -75,13 +73,13 @@ func (t *windowsTerm) enableStdoutVT() error {
 }
 
 func (t *windowsTerm) Init() error {
-	// Wechsel in den alternativen Bildschirmpuffer (unterstützt von Windows Terminal / VT)
+	// Switch to alternate screen buffer (supported by Windows Terminal / VT)
 	_, _ = t.stdout.WriteString("\x1b[?1049h")
 	return nil
 }
 
 func (t *windowsTerm) Close() error {
-	// Zurück zum Hauptbildschirmpuffer
+	// Back to main screen buffer
 	_, _ = t.stdout.WriteString("\x1b[?1049l")
 	if t.outVTEnabled {
 		h, _ := windows.GetStdHandle(windows.STD_OUTPUT_HANDLE)

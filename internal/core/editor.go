@@ -7,7 +7,7 @@ import (
 	"nim/internal/terminal"
 )
 
-// Mode ist der aktuelle Editor-Modus.
+// Mode is the current editor mode.
 type Mode int
 
 const (
@@ -29,21 +29,20 @@ func (m Mode) String() string {
 	}
 }
 
-// Editor verbindet Buffer und Terminal; enthält die Hauptschleife.
+// Editor ties buffer and terminal together; contains the main loop.
 type Editor struct {
 	Buf         *Buffer
 	Term        terminal.Terminal
 	Mode        Mode
 	Quit        bool
-	Cmd         string // aktuelle Befehlszeile im Command-Modus
-	Msg         string // Statusmeldung (z. B. "Gespeichert")
+	Cmd         string // current command line in Command mode
+	Msg         string // status message (e.g. "Saved")
 	Config      *Config
-	pendingKey  rune  // für Mehrfach-Tasten (dd im Normal-Modus, jj im Insert mit Timeout)
-	ignoreNextJ bool  // nach "jj" → normal: ein überzähliges "j" (Tastenwiederholung) ignorieren
+	pendingKey  rune  // for chord keys (dd in Normal, jj in Insert with timeout)
+	ignoreNextJ bool  // after "jj" -> normal: ignore one extra "j" (key repeat)
 }
 
-// NewEditor erstellt einen Editor mit Buffer und Terminal.
-// config kann nil sein, dann wird DefaultConfig() verwendet.
+// NewEditor creates an editor with buffer and terminal. config may be nil; then DefaultConfig() is used.
 func NewEditor(buf *Buffer, term terminal.Terminal, config *Config) *Editor {
 	if config == nil {
 		config = DefaultConfig()
@@ -56,7 +55,7 @@ func NewEditor(buf *Buffer, term terminal.Terminal, config *Config) *Editor {
 	}
 }
 
-// Run startet die Hauptschleife (Tasten lesen, zeichnen, reagieren).
+// Run starts the main loop (read keys, draw, react).
 func (e *Editor) Run() error {
 	if err := e.Term.Init(); err != nil {
 		return err
@@ -68,12 +67,12 @@ func (e *Editor) Run() error {
 		e.Redraw()
 		var key terminal.Key
 		var err error
-		// Im Insert-Modus mit wartendem Präfix-Key (z. B. erstes "j" für "jj"): mit Timeout lesen.
+		// In Insert mode with pending prefix key (e.g. first "j" for "jj"): read with timeout.
 		if e.pendingKey != 0 && e.Mode == ModeInsert && e.Config != nil {
 			timeoutMs := e.Config.PendingTimeoutMs()
 			key, err = e.Term.ReadKeyWithTimeout(timeoutMs)
 			if err == terminal.ErrTimeout {
-				// Timeout: erstes Zeichen normal einfügen, dann weiter
+				// Timeout: insert first char normally, then continue
 				e.Buf.InsertRune(e.pendingKey)
 				e.pendingKey = 0
 				continue
@@ -89,9 +88,8 @@ func (e *Editor) Run() error {
 	return nil
 }
 
-// Redraw zeichnet den sichtbaren Bereich und die Statuszeile.
-// Cursor wird während des Zeichnens ausgeblendet; die gesamte Ausgabe wird
-// in einem Stück geschrieben und einmal geflusht, um Flackern zu vermeiden.
+// Redraw paints the visible area and the status line. Cursor is hidden while drawing; output is
+// written in one go and flushed once to avoid flicker.
 func (e *Editor) Redraw() {
 	rows, cols, _ := e.Term.Size()
 	if rows < 2 {
@@ -114,11 +112,11 @@ func (e *Editor) Redraw() {
 		clearToEnd    = "\x1b[K"
 		statusBarOn   = "\x1b[100m\x1b[97m"
 		statusBarOff  = "\x1b[0m"
-		lineNumStyle  = "\x1b[90m" // gedämpftes Grau für Zeilennummern
+		lineNumStyle  = "\x1b[90m" // dim gray for line numbers
 		lineNumStyleOff = "\x1b[0m"
 	)
 	const lineNumWidth = 5
-	const lineNumGap  = 1   // Leerstelle zwischen Nummer und Zeileninhalt
+	const lineNumGap  = 1   // gap between number and line content
 	contentStartCol  := lineNumWidth + lineNumGap + 1
 	contentWidth     := cols - (lineNumWidth + lineNumGap)
 	if contentWidth < 1 {
@@ -175,7 +173,7 @@ func (e *Editor) Redraw() {
 		status = status[:cols]
 	}
 	sb.WriteString(status)
-	// Rest der Zeile mit Hintergrundfarbe füllen (bis zum rechten Rand)
+	// Fill rest of line with background color to the right edge
 	for i := len(status); i < cols; i++ {
 		sb.WriteByte(' ')
 	}
@@ -196,7 +194,7 @@ func (e *Editor) Redraw() {
 	e.Term.Flush()
 }
 
-// expandTabs ersetzt Tabs durch Leerzeichen (tabSize Spalten pro Tab).
+// expandTabs replaces tabs with spaces (tabSize columns per tab).
 func expandTabs(s string, tabSize int) string {
 	if tabSize <= 0 {
 		tabSize = 4
@@ -219,7 +217,7 @@ func expandTabs(s string, tabSize int) string {
 	return b.String()
 }
 
-// byteOffsetToDisplayCol liefert die Anzeige-Spalte (0-basiert) für den Byte-Offset in s (Tabs expandiert).
+// byteOffsetToDisplayCol returns the display column (0-based) for the byte offset in s (tabs expanded).
 func byteOffsetToDisplayCol(s string, byteOff int, tabSize int) int {
 	if tabSize <= 0 {
 		tabSize = 4
@@ -242,15 +240,24 @@ func (e *Editor) statusText() string {
 	if e.Msg != "" {
 		return e.Msg
 	}
-	switch e.Mode {
-	case ModeCommand:
+	if e.Mode == ModeCommand {
 		return ":" + e.Cmd
-	default:
-		return e.Buf.StatusLine(e.Mode.String())
 	}
+	lang := LangEN
+	if e.Config != nil {
+		lang = e.Config.Language()
+	}
+	modeKey := "mode_normal"
+	switch e.Mode {
+	case ModeInsert:
+		modeKey = "mode_insert"
+	case ModeCommand:
+		modeKey = "mode_command"
+	}
+	return e.Buf.StatusLine(lang, T(lang, modeKey))
 }
 
-// HandleKey verarbeitet eine Taste je nach Modus.
+// HandleKey processes a key according to the current mode.
 func (e *Editor) HandleKey(k terminal.Key) {
 	switch e.Mode {
 	case ModeNormal:
@@ -270,14 +277,14 @@ func (e *Editor) handleNormalKey(k terminal.Key) {
 		return
 	}
 
-	// Ein überzähliges "j" nach "jj" (Tastenwiederholung) ignorieren
+	// Ignore extra "j" after "jj" (key repeat)
 	if e.ignoreNextJ && keyStr == "j" {
 		e.ignoreNextJ = false
 		return
 	}
 	e.ignoreNextJ = false
 
-	// Config-basiert: Mehrfach-Tasten (z. B. dd) und Lookup
+	// Config-based: chord keys (e.g. dd) and lookup
 	if e.Config != nil && e.Config.Keybinds != nil {
 		if e.pendingKey != 0 {
 			compound := string(e.pendingKey) + keyStr
@@ -342,7 +349,7 @@ func (e *Editor) handleNormalKey(k terminal.Key) {
 	}
 }
 
-// runAction führt eine durch die Keybind-Config benannte Aktion aus.
+// runAction runs the action named by the keybind config.
 func (e *Editor) runAction(action string) {
 	switch action {
 	case "move_left":
@@ -415,7 +422,7 @@ func (e *Editor) handleInsertKey(k terminal.Key) {
 				e.runAction(action)
 				return
 			}
-			// Keine Bindung für compound: erstes Zeichen einfügen, dann aktuelle Taste verarbeiten
+			// No binding for chord: insert first char, then handle current key
 			e.Buf.InsertRune(saved)
 		}
 		if e.pendingKey == 0 {
@@ -430,7 +437,7 @@ func (e *Editor) handleInsertKey(k terminal.Key) {
 		}
 	}
 
-	// Fallback: Sondertasten und Zeichen einfügen
+	// Fallback: special keys and insert rune
 	switch {
 	case k.Esc:
 		e.Mode = ModeNormal
@@ -485,11 +492,15 @@ func (e *Editor) executeCommand() {
 	if cmd == "" {
 		return
 	}
+	lang := LangEN
+	if e.Config != nil {
+		lang = e.Config.Language()
+	}
 	parts := strings.Fields(cmd)
 	switch parts[0] {
 	case "q", "quit":
 		if e.Buf.Dirty {
-			e.Msg = "Ungespeicherte Änderungen ( :w zum Speichern, :q! zum Verlassen ohne Speichern )"
+			e.Msg = T(lang, "msg_unsaved")
 			return
 		}
 		e.Quit = true
@@ -497,18 +508,18 @@ func (e *Editor) executeCommand() {
 		e.Quit = true
 	case "w", "write":
 		if err := e.Buf.Save(); err != nil {
-			e.Msg = "Fehler: " + err.Error()
+			e.Msg = fmt.Sprintf(T(lang, "msg_error"), err.Error())
 			return
 		}
-		e.Msg = "Gespeichert"
+		e.Msg = T(lang, "msg_saved")
 	case "wq":
 		if err := e.Buf.Save(); err != nil {
-			e.Msg = "Fehler: " + err.Error()
+			e.Msg = fmt.Sprintf(T(lang, "msg_error"), err.Error())
 			return
 		}
-		e.Msg = "Gespeichert"
+		e.Msg = T(lang, "msg_saved")
 		e.Quit = true
 	default:
-		e.Msg = "Unbekannter Befehl: " + parts[0]
+		e.Msg = fmt.Sprintf(T(lang, "msg_unknown_cmd"), parts[0])
 	}
 }

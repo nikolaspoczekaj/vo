@@ -4,7 +4,7 @@ import (
 	"io"
 )
 
-// parseKeyFromReader liest von r bis eine vollständige Taste erkannt wurde.
+// parseKeyFromReader reads from r until a complete key is recognized.
 func parseKeyFromReader(r io.Reader) (Key, error) {
 	var buf [1]byte
 	n, err := r.Read(buf[:])
@@ -14,7 +14,7 @@ func parseKeyFromReader(r io.Reader) (Key, error) {
 	return parseKeyWithFirstByte(buf[0], r)
 }
 
-// parseKeyWithFirstByte wertet die Taste aus, deren erstes Byte bereits gelesen wurde.
+// parseKeyWithFirstByte interprets the key whose first byte has already been read.
 func parseKeyWithFirstByte(b byte, r io.Reader) (Key, error) {
 	switch b {
 	case KeyRuneEsc:
@@ -37,7 +37,7 @@ func parseKeyWithFirstByte(b byte, r io.Reader) (Key, error) {
 }
 
 func parseEscapeSequence(r io.Reader) (Key, error) {
-	// Ein Zeichen mehr lesen; wenn '[' dann CSI (z. B. Pfeile)
+	// Read one more char; if '[' then CSI (e.g. arrows)
 	if br, ok := r.(io.ByteReader); ok {
 		c, err := br.ReadByte()
 		if err != nil {
@@ -66,7 +66,7 @@ func parseEscapeSequence(r io.Reader) (Key, error) {
 		}
 		return Key{Esc: true}, nil
 	}
-	// Fallback: ohne ByteReader weiterlesen
+	// Fallback: continue without ByteReader
 	var buf [1]byte
 	if _, err := r.Read(buf[:]); err != nil {
 		return Key{Esc: true}, nil

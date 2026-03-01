@@ -1,4 +1,4 @@
-// Package core enthält die plattformunabhängige Editor-Logik (Buffer, Modi, Befehle).
+// Package core contains the platform-independent editor logic (buffer, modes, commands).
 package core
 
 import (
@@ -8,16 +8,16 @@ import (
 	"strings"
 )
 
-// Buffer hält den Text einer Datei und die Cursor-Position.
+// Buffer holds the text of a file and the cursor position.
 type Buffer struct {
 	Lines []string
 	Path  string
-	Row   int // 0-basiert
-	Col   int // 0-basiert, nicht über Zeilenende
+	Row   int // 0-based
+	Col   int // 0-based, not past line end
 	Dirty bool
 }
 
-// NewBuffer erstellt einen leeren Buffer.
+// NewBuffer creates an empty buffer.
 func NewBuffer() *Buffer {
 	return &Buffer{
 		Lines: []string{""},
@@ -26,7 +26,7 @@ func NewBuffer() *Buffer {
 	}
 }
 
-// Load lädt eine Datei in den Buffer.
+// Load loads a file into the buffer.
 func (b *Buffer) Load(path string) error {
 	f, err := os.Open(path)
 	if err != nil {
@@ -56,7 +56,7 @@ func (b *Buffer) Load(path string) error {
 	return nil
 }
 
-// Save schreibt den Buffer in die Datei.
+// Save writes the buffer to the file.
 func (b *Buffer) Save() error {
 	if b.Path == "" {
 		return fmt.Errorf("no file path")
@@ -80,7 +80,7 @@ func (b *Buffer) Save() error {
 	return nil
 }
 
-// CurrentLine gibt die aktuelle Zeile zurück (niemals nil).
+// CurrentLine returns the current line (never nil).
 func (b *Buffer) CurrentLine() string {
 	if b.Row < 0 || b.Row >= len(b.Lines) {
 		return ""
@@ -88,12 +88,12 @@ func (b *Buffer) CurrentLine() string {
 	return b.Lines[b.Row]
 }
 
-// LineCount gibt die Anzahl der Zeilen zurück.
+// LineCount returns the number of lines.
 func (b *Buffer) LineCount() int {
 	return len(b.Lines)
 }
 
-// ClampCursor hält Row/Col in gültigen Grenzen.
+// ClampCursor keeps Row/Col within valid bounds.
 func (b *Buffer) ClampCursor() {
 	if b.Row < 0 {
 		b.Row = 0
@@ -110,7 +110,7 @@ func (b *Buffer) ClampCursor() {
 	}
 }
 
-// InsertRune fügt ein Zeichen an der Cursor-Position ein (Insert-Modus).
+// InsertRune inserts a rune at the cursor position (Insert mode).
 func (b *Buffer) InsertRune(r rune) {
 	b.ClampCursor()
 	line := b.CurrentLine()
@@ -129,7 +129,7 @@ func (b *Buffer) InsertRune(r rune) {
 	b.Dirty = true
 }
 
-// InsertSpaces fügt n Leerzeichen an der Cursor-Position ein (z. B. für Tab mit indent).
+// InsertSpaces inserts n spaces at the cursor (e.g. for Tab with indent).
 func (b *Buffer) InsertSpaces(n int) {
 	if n <= 0 {
 		return
@@ -144,7 +144,7 @@ func (b *Buffer) InsertSpaces(n int) {
 	b.Dirty = true
 }
 
-// DeleteRuneBackspace löscht das Zeichen vor dem Cursor (Backspace).
+// DeleteRuneBackspace deletes the character before the cursor (Backspace).
 func (b *Buffer) DeleteRuneBackspace() {
 	b.ClampCursor()
 	if b.Col > 0 {
@@ -153,7 +153,7 @@ func (b *Buffer) DeleteRuneBackspace() {
 		b.Col--
 		b.Dirty = true
 	} else if b.Row > 0 {
-		// Zeile mit vorheriger zusammenführen
+		// Merge with previous line
 		prev := b.Lines[b.Row-1]
 		b.Lines = append(b.Lines[:b.Row-1], b.Lines[b.Row:]...)
 		b.Row--
@@ -163,7 +163,7 @@ func (b *Buffer) DeleteRuneBackspace() {
 	}
 }
 
-// MoveLeft bewegt den Cursor ein Zeichen nach links.
+// MoveLeft moves the cursor one character left.
 func (b *Buffer) MoveLeft() {
 	b.ClampCursor()
 	if b.Col > 0 {
@@ -171,7 +171,7 @@ func (b *Buffer) MoveLeft() {
 	}
 }
 
-// MoveRight bewegt den Cursor ein Zeichen nach rechts.
+// MoveRight moves the cursor one character right.
 func (b *Buffer) MoveRight() {
 	b.ClampCursor()
 	if b.Col < len(b.CurrentLine()) {
@@ -179,7 +179,7 @@ func (b *Buffer) MoveRight() {
 	}
 }
 
-// MoveUp bewegt den Cursor eine Zeile nach oben.
+// MoveUp moves the cursor one line up.
 func (b *Buffer) MoveUp() {
 	if b.Row > 0 {
 		b.Row--
@@ -187,7 +187,7 @@ func (b *Buffer) MoveUp() {
 	}
 }
 
-// MoveDown bewegt den Cursor eine Zeile nach unten.
+// MoveDown moves the cursor one line down.
 func (b *Buffer) MoveDown() {
 	if b.Row < len(b.Lines)-1 {
 		b.Row++
@@ -195,24 +195,24 @@ func (b *Buffer) MoveDown() {
 	}
 }
 
-// MoveLineStart setzt den Cursor auf den Zeilenanfang.
+// MoveLineStart sets the cursor to the start of the line.
 func (b *Buffer) MoveLineStart() {
 	b.Col = 0
 }
 
-// MoveLineEnd setzt den Cursor auf das Zeilenende.
+// MoveLineEnd sets the cursor to the end of the line.
 func (b *Buffer) MoveLineEnd() {
 	b.Col = len(b.CurrentLine())
 }
 
-// MoveBufferStart setzt den Cursor an den Anfang des Buffers (erste Zeile, erste Spalte).
+// MoveBufferStart sets the cursor to the start of the buffer (first line, first column).
 func (b *Buffer) MoveBufferStart() {
 	b.Row = 0
 	b.Col = 0
 	b.ClampCursor()
 }
 
-// MoveBufferEnd setzt den Cursor ans Ende des Buffers (letzte Zeile, Zeilenende).
+// MoveBufferEnd sets the cursor to the end of the buffer (last line, line end).
 func (b *Buffer) MoveBufferEnd() {
 	if len(b.Lines) == 0 {
 		return
@@ -221,29 +221,64 @@ func (b *Buffer) MoveBufferEnd() {
 	b.MoveLineEnd()
 }
 
-// isWordByte gilt für Buchstaben, Ziffern und Unterstrich (Wort im vim-Sinn).
+// isWordByte is true for letters, digits, and underscore (word characters as in Vim).
 func isWordByte(c byte) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
 }
 
-// MoveToNextWord (w) setzt den Cursor auf den Start des nächsten Wortes.
+// isBlank is true for space and tab.
+func isBlank(c byte) bool {
+	return c == ' ' || c == '\t'
+}
+
+// MoveToNextWord (w) moves the cursor to the start of the next word.
+// As in Vim: a "word" is either a run of word characters (letters, digits, _) or a run of
+// other non-blank characters (e.g. brackets, #-). So in "(foo)" you can step before "(", "foo", ")".
 func (b *Buffer) MoveToNextWord() {
 	b.ClampCursor()
 	line := b.CurrentLine()
 	col := b.Col
-	// Aus aktuellem Wort heraus (falls mitten drin)
-	for col < len(line) && isWordByte(line[col]) {
+	startCol := col
+	// Only skip when we're *inside* the same word run (previous char same type)
+	if col < len(line) && col > 0 && !isBlank(line[col-1]) {
+		prevIsWord := isWordByte(line[col-1])
+		currIsWord := col < len(line) && isWordByte(line[col])
+		if prevIsWord == currIsWord && (prevIsWord || !isBlank(line[col])) {
+			if prevIsWord {
+				for col < len(line) && isWordByte(line[col]) {
+					col++
+				}
+			} else {
+				for col < len(line) && !isBlank(line[col]) {
+					col++
+				}
+			}
+		}
+	}
+	// Skip spaces/tabs
+	for col < len(line) && isBlank(line[col]) {
 		col++
 	}
-	// Über Nicht-Wort-Zeichen (Leerzeichen, Satzzeichen) zum nächsten Wort
-	for col < len(line) && !isWordByte(line[col]) {
-		col++
+	// Already at word start (or on blank)? Skip this word so we land on the next.
+	if col == startCol && col < len(line) && !isBlank(line[col]) {
+		if isWordByte(line[col]) {
+			for col < len(line) && isWordByte(line[col]) {
+				col++
+			}
+		} else {
+			for col < len(line) && !isBlank(line[col]) {
+				col++
+			}
+		}
+		for col < len(line) && isBlank(line[col]) {
+			col++
+		}
 	}
 	if col < len(line) {
 		b.Col = col
 		return
 	}
-	// Zeilenende: nächste Zeile
+	// End of line: next line
 	if b.Row >= len(b.Lines)-1 {
 		b.Col = len(line)
 		return
@@ -251,37 +286,53 @@ func (b *Buffer) MoveToNextWord() {
 	b.Row++
 	b.Col = 0
 	line = b.CurrentLine()
-	for b.Col < len(line) && !isWordByte(line[b.Col]) {
+	for b.Col < len(line) && isBlank(line[b.Col]) {
 		b.Col++
 	}
 }
 
-// MoveToPrevWord (b) setzt den Cursor auf den Anfang des aktuellen oder des vorherigen Wortes.
+// MoveToPrevWord (b) moves the cursor to the start of the current or previous word.
+// As in Vim: word = word-char run or non-blank run (e.g. brackets).
 func (b *Buffer) MoveToPrevWord() {
 	b.ClampCursor()
 	line := b.CurrentLine()
 	col := b.Col
-	// Mitten im Wort oder direkt dahinter: zum Anfang dieses Wortes
-	if col > 0 && isWordByte(line[col-1]) {
-		for col > 0 && isWordByte(line[col-1]) {
-			col--
+	// Inside a word/run: go to start of this run
+	if col > 0 {
+		if isWordByte(line[col-1]) {
+			for col > 0 && isWordByte(line[col-1]) {
+				col--
+			}
+			b.Col = col
+			return
+		}
+		if !isBlank(line[col-1]) {
+			for col > 0 && !isBlank(line[col-1]) {
+				col--
+			}
+			b.Col = col
+			return
+		}
+	}
+	// Skip blanks backward
+	for col > 0 && isBlank(line[col-1]) {
+		col--
+	}
+	// Previous word/run
+	if col > 0 {
+		if isWordByte(line[col-1]) {
+			for col > 0 && isWordByte(line[col-1]) {
+				col--
+			}
+		} else {
+			for col > 0 && !isBlank(line[col-1]) {
+				col--
+			}
 		}
 		b.Col = col
 		return
 	}
-	// Über Nicht-Wort-Zeichen zurück
-	for col > 0 && !isWordByte(line[col-1]) {
-		col--
-	}
-	// Über Wort zurück → Start des vorherigen Wortes
-	for col > 0 && isWordByte(line[col-1]) {
-		col--
-	}
-	if col > 0 {
-		b.Col = col
-		return
-	}
-	// Am Zeilenanfang: eine Zeile nach oben, letztes Wort
+	// At line start: go up one line, last word
 	if b.Row == 0 {
 		b.Col = 0
 		return
@@ -289,15 +340,23 @@ func (b *Buffer) MoveToPrevWord() {
 	b.Row--
 	line = b.CurrentLine()
 	b.Col = len(line)
-	for b.Col > 0 && !isWordByte(line[b.Col-1]) {
+	for b.Col > 0 && isBlank(line[b.Col-1]) {
 		b.Col--
 	}
-	for b.Col > 0 && isWordByte(line[b.Col-1]) {
-		b.Col--
+	if b.Col > 0 {
+		if isWordByte(line[b.Col-1]) {
+			for b.Col > 0 && isWordByte(line[b.Col-1]) {
+				b.Col--
+			}
+		} else {
+			for b.Col > 0 && !isBlank(line[b.Col-1]) {
+				b.Col--
+			}
+		}
 	}
 }
 
-// DeleteLine löscht die aktuelle Zeile.
+// DeleteLine deletes the current line.
 func (b *Buffer) DeleteLine() {
 	if len(b.Lines) == 0 {
 		return
@@ -315,20 +374,20 @@ func (b *Buffer) DeleteLine() {
 	b.Dirty = true
 }
 
-// StatusLine liefert einen kurzen Status-Text (Dateiname, Modus, Position).
-func (b *Buffer) StatusLine(mode string) string {
+// StatusLine returns a short status text (filename, mode, position). lang is the UI language code (e.g. "en", "de").
+func (b *Buffer) StatusLine(lang, mode string) string {
 	path := b.Path
 	if path == "" {
-		path = "[No Name]"
+		path = T(lang, "no_name")
 	}
 	dirty := ""
 	if b.Dirty {
-		dirty = " [+]"
+		dirty = T(lang, "dirty_suffix")
 	}
-	return fmt.Sprintf("%s%s | %s | %d:%d", path, dirty, mode, b.Row+1, b.Col+1)
+	return fmt.Sprintf(T(lang, "status_fmt"), path, dirty, mode, b.Row+1, b.Col+1)
 }
 
-// VisibleLines liefert die Zeilen für die Anzeige (von rowStart, max n Zeilen).
+// VisibleLines returns the lines for display (from rowStart, up to n lines).
 func (b *Buffer) VisibleLines(rowStart, n int) []string {
 	if rowStart < 0 {
 		rowStart = 0

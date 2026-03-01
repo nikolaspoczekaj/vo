@@ -1,6 +1,5 @@
-// Package terminal definiert die plattformunabhängige Schnittstelle für
-// Terminal-Ein- und -Ausgabe. Die konkrete Implementierung wird per
-// Build-Tag (windows / !windows) gewählt.
+// Package terminal defines the platform-independent interface for terminal I/O.
+// The concrete implementation is selected by build tag (windows / !windows).
 package terminal
 
 import (
@@ -8,53 +7,52 @@ import (
 	"errors"
 )
 
-// ErrTimeout wird von ReadKeyWithTimeout zurückgegeben, wenn innerhalb der Zeitspanne keine Taste kam.
+// ErrTimeout is returned by ReadKeyWithTimeout when no key was read within the timeout.
 var ErrTimeout = errors.New("key read timeout")
 
-// Key repräsentiert eine gedrückte Taste (Sonderzeichen oder Rune).
+// Key represents a pressed key (special key or rune).
 type Key struct {
 	Rune rune
 	Ctrl bool
 	Alt  bool
-	// Special keys (0 wenn keine)
+	// Special keys (0 when none)
 	Up, Down, Left, Right bool
 	Enter, Backspace, Esc  bool
 	Home, End              bool
 }
 
-// IsRune true, wenn eine normale Zeichentaste (kein Sonderzeichen).
+// IsRune returns true for a normal character key (not a special key).
 func (k Key) IsRune() bool {
 	return !k.Up && !k.Down && !k.Left && !k.Right &&
 		!k.Enter && !k.Backspace && !k.Esc && !k.Home && !k.End
 }
 
-// Terminal ist die Schnittstelle für alle OS-spezifischen Terminal-Operationen.
-// Der Core-Editor verwendet nur diese Schnittstelle.
+// Terminal is the interface for all OS-specific terminal operations. The core editor uses only this interface.
 type Terminal interface {
-	// Init bereitet das Terminal für den Editor vor (z. B. Raw-Mode).
+	// Init prepares the terminal for the editor (e.g. raw mode).
 	Init() error
-	// Close stellt den ursprünglichen Zustand wieder her.
+	// Close restores the original terminal state.
 	Close() error
-	// ReadKey liest eine einzelne Tasten-Eingabe (blockierend).
+	// ReadKey reads a single key press (blocking).
 	ReadKey() (Key, error)
-	// ReadKeyWithTimeout wie ReadKey, gibt aber nach timeout ErrTimeout zurück wenn keine Taste kam.
+	// ReadKeyWithTimeout like ReadKey, but returns ErrTimeout after timeout if no key was pressed.
 	ReadKeyWithTimeout(timeoutMs int) (Key, error)
-	// Size liefert Zeilen- und Spaltenanzahl des Terminals.
+	// Size returns the terminal row and column count.
 	Size() (rows, cols int, err error)
-	// Write schreibt Text an die aktuelle Cursor-Position.
+	// Write writes text at the current cursor position.
 	Write(s string) (int, error)
-	// WriteBytes wie Write, aber mit []byte (für effiziente Nutzung).
+	// WriteBytes like Write but with []byte (for efficiency).
 	WriteBytes(p []byte) (int, error)
-	// MoveCursor setzt den Cursor auf (row, col); 1-basiert.
+	// MoveCursor sets the cursor to (row, col); 1-based.
 	MoveCursor(row, col int) error
-	// ClearScreen löscht den sichtbaren Bereich und setzt Cursor auf (1,1).
+	// ClearScreen clears the visible area and sets cursor to (1,1).
 	ClearScreen() error
-	// HideCursor / ShowCursor für Cursor ein-/ausblenden.
+	// HideCursor / ShowCursor to hide or show the cursor.
 	HideCursor() error
 	ShowCursor() error
-	// Flush schreibt alle gepufferten Ausgaben auf die Konsole (wichtig unter Windows).
+	// Flush flushes all buffered output to the console (important on Windows).
 	Flush() error
-	// Stdin/Stdout für Fallbacks oder Tests (können nil sein).
+	// Stdin/Stdout for fallbacks or tests (may be nil).
 	Stdin() io.Reader
 	Stdout() io.Writer
 }

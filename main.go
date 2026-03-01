@@ -1,5 +1,5 @@
-// Nim – minimaler Vim-ähnlicher Editor in Go.
-// Aufruf: nim [dateiname]
+// Nim – minimal Vim-like editor in Go.
+// Usage: nim [filename]
 package main
 
 import (
