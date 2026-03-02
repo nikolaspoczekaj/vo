@@ -1,19 +1,18 @@
 # Contributing to Vo
 
-Thank you for your interest in contributing to Vo. This document explains how to get started, our expectations, and how to submit changes.
+Thank you for your interest in contributing to Vo. This document explains how to get started and how to submit changes.
 
 ---
 
 ## Code of conduct
 
 - Be respectful and constructive.
-- Vo is inspired by Vim and Neovim; we do not position ourselves as competition. Please keep discussions and PRs aligned with that spirit.
 
 ---
 
 ## Getting started
 
-1. **Fork and clone** the repository.
+1. **Fork and clone** the dev branch.
 2. **Build and run** (from the repo root):
 
    ```bash
@@ -53,26 +52,15 @@ Thank you for your interest in contributing to Vo. This document explains how to
 
 When adding features, prefer extending the core and the `Terminal` interface rather than adding one-off OS branches in the core.
 
----
-
-## Areas where help is welcome
-
-- **Documentation**: README, comments, doc comments, and config examples.
-- **i18n**: New or improved translations in `internal/core/i18n.go` (and config/docs for new languages).
-- **Terminal behaviour**: Fixes and improvements for different terminals (especially Windows).
-- **Config**: New options or keybind actions that fit the current design (see existing options and keybinds).
-- **Tests**: Unit tests for buffer, config, or keybind logic (terminal layer is harder to test in isolation).
-
-If you have a larger feature in mind, open an issue first so we can align on scope and design.
 
 ---
 
 ## Submitting changes
 
-1. **Create a branch** from the default branch (e.g. `main` or `master`).
+1. **Create a branch** from the dev branch.
 2. **Make your changes**: keep commits focused and messages clear.
 3. **Run** `go fmt ./...` and `go vet ./...`.
-4. **Open a Pull Request** against the default branch. Describe what you changed and why.
+4. **Open a Pull Request** against the dev branch. Describe what you changed and why.
 5. **Address review feedback** if any.
 
 By submitting a PR, you agree that your contributions may be used under the project’s license.
@@ -90,6 +78,6 @@ By submitting a PR, you agree that your contributions may be used under the proj
 
 ## Questions
 
-If something is unclear, open an issue with the “question” label (if available) or describe your question in a new issue. We’re happy to help.
+If something is unclear, open an issue with the “question” label (if available) or describe your question in a new issue.
 
 Thank you for contributing.
