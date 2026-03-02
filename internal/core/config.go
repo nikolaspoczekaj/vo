@@ -3,14 +3,15 @@ package core
 import (
 	"bufio"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
 
 // Config holds the configuration loaded at startup (options and keybinds).
 type Config struct {
-	Options  map[string]string  // e.g. "timeout" -> "300"
-	Keybinds *KeybindConfig     // built from keybind lines
+	Options  map[string]string // e.g. "timeout" -> "300"
+	Keybinds *KeybindConfig    // built from keybind lines
 }
 
 // DefaultConfig returns a config with default values.
@@ -18,15 +19,122 @@ func DefaultConfig() *Config {
 	return &Config{
 		Options: map[string]string{
 			"timeout":             "300",
-			"relative_linenumber": "false",
+			"relative_linenumber": "true",
 			"indent":              "4",
 			"language":            "en",
-			"title":               "vo - a vim-like editor",
-		"title_time_format":   "dd.MM.yy hh:mm",
-		"scroll_margin":       "0",
-	},
+			"title":               "vo - a vim-like editor written in Go",
+			"title_time_format":   "dd.MM.yy hh:mm:ss",
+			"scroll_margin":       "3",
+			"popup_timeout":       "3",
+		},
 		Keybinds: defaultKeybinds(),
 	}
+}
+
+// ConfigPath returns the OS-specific path for vo.conf.
+// Linux: ~/.config/vo/vo.conf, macOS: ~/Library/Application Support/vo/vo.conf, Windows: %APPDATA%\vo\vo.conf
+func ConfigPath() (string, error) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "vo", "vo.conf"), nil
+}
+
+// DefaultConfigContent returns the default vo.conf content written when the file is created for the first time.
+func DefaultConfigContent() string {
+	return `# Vo editor config (line-based, loaded once at startup)
+# Empty lines and # lines are ignored.
+
+# Options: name value  or  name = value
+timeout 300
+relative_linenumber true
+indent 4
+scroll_margin 3
+# Popup notifications (info/error): how many seconds they stay visible (e.g. 3)
+popup_timeout 3
+# UI language: en (English) or de (German)
+language en
+
+# Title bar (top): title text and date/time format. Placeholders: dd, MM, yy, yyyy, hh, mm, ss (order and parts optional)
+title vo - a vim-like editor written in Go
+title_time_format dd.MM.yy hh:mm:ss
+
+# Keybinds: keybind <mode> <keys> <action>
+# Modes: normal, insert, command
+# Keys: single key (e.g. i, j), sequence (dd, jj), or special (<Up>, <C-c>)
+
+keybind normal h move_left
+keybind normal j move_down
+keybind normal k move_up
+keybind normal l move_right
+keybind normal <Up> move_up
+keybind normal <Down> move_down
+keybind normal <Left> move_left
+keybind normal <Right> move_right
+keybind normal <Home> move_line_start
+keybind normal <End> move_line_end
+keybind normal <Enter> split_line
+keybind normal <Backspace> delete_backspace
+keybind normal i insert
+keybind normal a insert_after
+keybind normal A insert_at_line_end
+keybind normal o open_line_below
+keybind normal O open_line_above
+keybind normal p paste_clipboard
+keybind normal v visual_mode
+keybind normal : command_mode
+keybind normal <C-c> quit
+keybind normal dd delete_line
+keybind normal yy yank_line
+keybind normal gg buffer_start
+keybind normal G buffer_end
+keybind normal 0 move_line_start
+keybind normal w next_word
+keybind normal b prev_word
+
+keybind insert jj normal_mode
+keybind visual h move_left
+keybind visual j move_down
+keybind visual k move_up
+keybind visual l move_right
+keybind visual <Up> move_up
+keybind visual <Down> move_down
+keybind visual <Left> move_left
+keybind visual <Right> move_right
+keybind visual <Home> move_line_start
+keybind visual <End> move_line_end
+keybind visual 0 move_line_start
+keybind visual w next_word
+keybind visual b prev_word
+keybind visual gg buffer_start
+keybind visual G buffer_end
+keybind visual d delete_visual_selection
+keybind visual y yank_visual_selection
+`
+}
+
+// EnsureConfigFile returns the path to vo.conf in the system config directory.
+// If the file does not exist, the directory is created and the default config is written.
+// The second return value is true if the file was created during this call.
+func EnsureConfigFile() (string, bool, error) {
+	path, err := ConfigPath()
+	if err != nil {
+		return "", false, err
+	}
+	if _, err := os.Stat(path); err == nil {
+		return path, false, nil
+	} else if !os.IsNotExist(err) {
+		return "", false, err
+	}
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", false, err
+	}
+	if err := os.WriteFile(path, []byte(DefaultConfigContent()), 0644); err != nil {
+		return "", false, err
+	}
+	return path, true, nil
 }
 
 // PendingTimeoutMs returns the timeout in milliseconds for chord keys (e.g. jj). Default 300 if unset or invalid.
@@ -82,14 +190,14 @@ func (c *Config) Language() string {
 	return s
 }
 
-// Title returns the title bar text. Default "vo - a vim-like editor".
+// Title returns the title bar text. Default "vo - a vim-like editor written in Go".
 func (c *Config) Title() string {
 	if c == nil || c.Options == nil {
-		return "vo - a vim-like editor"
+		return "vo - a vim-like editor written in Go"
 	}
 	s := strings.TrimSpace(c.Options["title"])
 	if s == "" {
-		return "vo - a vim-like editor"
+		return "vo - a vim-like editor written in Go"
 	}
 	return s
 }
@@ -97,24 +205,41 @@ func (c *Config) Title() string {
 // TitleTimeFormat returns the time format for the title bar. Supports placeholders: dd, MM, yy, yyyy, hh, mm, ss (e.g. "dd.MM.yy hh:mm:ss"). Empty = hide time.
 func (c *Config) TitleTimeFormat() string {
 	if c == nil || c.Options == nil {
-		return "dd.MM.yy hh:mm"
+		return "dd.MM.yy hh:mm:ss"
 	}
 	return strings.TrimSpace(c.Options["title_time_format"])
 }
 
 // ScrollMargin returns how many lines from the top/bottom of the visible area trigger scrolling.
-// 0 = scroll only when cursor reaches the very top or bottom line. Default 0.
+// 0 = scroll only when cursor reaches the very top or bottom line.
+// Default 3 (matches the template config and README).
 func (c *Config) ScrollMargin() int {
 	if c == nil || c.Options == nil {
-		return 0
+		return 3
 	}
 	s := strings.TrimSpace(c.Options["scroll_margin"])
 	if s == "" {
-		return 0
+		return 3
 	}
 	n, err := strconv.Atoi(s)
 	if err != nil || n < 0 {
-		return 0
+		return 3
+	}
+	return n
+}
+
+// PopupTimeoutSec returns how many seconds popup notifications (info/error) stay visible. Default 3.
+func (c *Config) PopupTimeoutSec() int {
+	if c == nil || c.Options == nil {
+		return 3
+	}
+	s := strings.TrimSpace(c.Options["popup_timeout"])
+	if s == "" {
+		return 3
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 1 || n > 60 {
+		return 3
 	}
 	return n
 }
@@ -236,7 +361,7 @@ func LoadConfig(path string) (*Config, error) {
 		cfg.Options["timeout"] = "300"
 	}
 	if _, ok := cfg.Options["relative_linenumber"]; !ok {
-		cfg.Options["relative_linenumber"] = "false"
+		cfg.Options["relative_linenumber"] = "true"
 	}
 	if _, ok := cfg.Options["indent"]; !ok {
 		cfg.Options["indent"] = "4"
@@ -245,13 +370,16 @@ func LoadConfig(path string) (*Config, error) {
 		cfg.Options["language"] = "en"
 	}
 	if _, ok := cfg.Options["title"]; !ok {
-		cfg.Options["title"] = "vo - a vim-like editor"
+		cfg.Options["title"] = "vo - a vim-like editor written in Go"
 	}
 	if _, ok := cfg.Options["title_time_format"]; !ok {
-		cfg.Options["title_time_format"] = "dd.MM.yy hh:mm"
+		cfg.Options["title_time_format"] = "dd.MM.yy hh:mm:ss"
 	}
 	if _, ok := cfg.Options["scroll_margin"]; !ok {
-		cfg.Options["scroll_margin"] = "0"
+		cfg.Options["scroll_margin"] = "3"
+	}
+	if _, ok := cfg.Options["popup_timeout"]; !ok {
+		cfg.Options["popup_timeout"] = "3"
 	}
 
 	return cfg, nil
@@ -277,14 +405,34 @@ func defaultKeybinds() *KeybindConfig {
 		{Mode: "normal", Keys: "A", Action: "insert_at_line_end"},
 		{Mode: "normal", Keys: "o", Action: "open_line_below"},
 		{Mode: "normal", Keys: "O", Action: "open_line_above"},
+		{Mode: "normal", Keys: "p", Action: "paste_clipboard"},
+		{Mode: "normal", Keys: "v", Action: "visual_mode"},
 		{Mode: "normal", Keys: ":", Action: "command_mode"},
 		{Mode: "normal", Keys: "<C-c>", Action: "quit"},
 		{Mode: "normal", Keys: "dd", Action: "delete_line"},
+		{Mode: "normal", Keys: "yy", Action: "yank_line"},
 		{Mode: "normal", Keys: "gg", Action: "buffer_start"},
 		{Mode: "normal", Keys: "G", Action: "buffer_end"},
 		{Mode: "normal", Keys: "0", Action: "move_line_start"},
 		{Mode: "normal", Keys: "w", Action: "next_word"},
 		{Mode: "normal", Keys: "b", Action: "prev_word"},
 		{Mode: "insert", Keys: "jj", Action: "normal_mode"},
+		{Mode: "visual", Keys: "h", Action: "move_left"},
+		{Mode: "visual", Keys: "j", Action: "move_down"},
+		{Mode: "visual", Keys: "k", Action: "move_up"},
+		{Mode: "visual", Keys: "l", Action: "move_right"},
+		{Mode: "visual", Keys: "<Up>", Action: "move_up"},
+		{Mode: "visual", Keys: "<Down>", Action: "move_down"},
+		{Mode: "visual", Keys: "<Left>", Action: "move_left"},
+		{Mode: "visual", Keys: "<Right>", Action: "move_right"},
+		{Mode: "visual", Keys: "<Home>", Action: "move_line_start"},
+		{Mode: "visual", Keys: "<End>", Action: "move_line_end"},
+		{Mode: "visual", Keys: "0", Action: "move_line_start"},
+		{Mode: "visual", Keys: "w", Action: "next_word"},
+		{Mode: "visual", Keys: "b", Action: "prev_word"},
+		{Mode: "visual", Keys: "gg", Action: "buffer_start"},
+		{Mode: "visual", Keys: "G", Action: "buffer_end"},
+		{Mode: "visual", Keys: "d", Action: "delete_visual_selection"},
+		{Mode: "visual", Keys: "y", Action: "yank_visual_selection"},
 	})
 }

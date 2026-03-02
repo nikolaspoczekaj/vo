@@ -110,6 +110,112 @@ func (b *Buffer) ClampCursor() {
 	}
 }
 
+// DeleteRange deletes the character-wise selection from (r1,c1) to (r2,c2) inclusive.
+// (r1,c1) is the start and (r2,c2) is the end in reading order. Cols are byte offsets.
+// Places cursor at (r1,c1) after deletion.
+func (b *Buffer) DeleteRange(r1, c1, r2, c2 int) {
+	if len(b.Lines) == 0 {
+		return
+	}
+	if r1 > r2 {
+		r1, c1, r2, c2 = r2, c2, r1, c1
+	} else if r1 == r2 && c1 > c2 {
+		c1, c2 = c2, c1
+	}
+	if r1 < 0 {
+		r1 = 0
+	}
+	if r2 >= len(b.Lines) {
+		r2 = len(b.Lines) - 1
+	}
+	line1 := b.Lines[r1]
+	line2 := b.Lines[r2]
+	if c1 > len(line1) {
+		c1 = len(line1)
+	}
+	if c2 >= len(line2) {
+		c2 = len(line2) - 1
+	}
+	if c2 < 0 {
+		c2 = 0
+	}
+	var rightPart string
+	if c2+1 <= len(line2) {
+		rightPart = line2[c2+1:]
+	}
+	if r1 == r2 {
+		b.Lines[r1] = line1[:c1] + rightPart
+		b.Row = r1
+		b.Col = c1
+	} else {
+		b.Lines[r1] = line1[:c1] + rightPart
+		b.Lines = append(b.Lines[:r1+1], b.Lines[r2+1:]...)
+		b.Row = r1
+		b.Col = c1
+	}
+	if len(b.Lines) == 0 {
+		b.Lines = []string{""}
+		b.Row, b.Col = 0, 0
+	}
+	b.ClampCursor()
+	b.Dirty = true
+}
+
+// RangeText returns the text in the character-wise range from (r1,c1) to (r2,c2) inclusive.
+// (r1,c1) is the start and (r2,c2) is the end in reading order. Cols are byte offsets.
+// The returned string may contain newlines if the range spans multiple lines.
+func (b *Buffer) RangeText(r1, c1, r2, c2 int) string {
+	if len(b.Lines) == 0 {
+		return ""
+	}
+	if r1 > r2 {
+		r1, c1, r2, c2 = r2, c2, r1, c1
+	} else if r1 == r2 && c1 > c2 {
+		c1, c2 = c2, c1
+	}
+	if r1 < 0 {
+		r1 = 0
+	}
+	if r2 >= len(b.Lines) {
+		r2 = len(b.Lines) - 1
+	}
+	line1 := b.Lines[r1]
+	line2 := b.Lines[r2]
+	if c1 < 0 {
+		c1 = 0
+	}
+	if c1 > len(line1) {
+		c1 = len(line1)
+	}
+	if c2 < 0 {
+		c2 = 0
+	}
+	if c2 >= len(line2) {
+		c2 = len(line2) - 1
+	}
+	if r1 == r2 {
+		if c1 > c2 || len(line1) == 0 {
+			return ""
+		}
+		return line1[c1 : c2+1]
+	}
+
+	var sb strings.Builder
+	// first line: from c1 to end
+	sb.WriteString(line1[c1:])
+	sb.WriteByte('\n')
+	// middle full lines
+	for i := r1 + 1; i < r2; i++ {
+		sb.WriteString(b.Lines[i])
+		sb.WriteByte('\n')
+	}
+	// last line: from start up to and including c2
+	if c2 >= 0 && c2 < len(line2) {
+		sb.WriteString(line2[:c2+1])
+	}
+	return sb.String()
+}
+
 // InsertRune inserts a rune at the cursor position (Insert mode).
 func (b *Buffer) InsertRune(r rune) {
 	b.ClampCursor()
@@ -365,9 +471,8 @@ func (b *Buffer) DeleteLine() {
 	if len(b.Lines) == 0 {
 		b.Lines = []string{""}
 	}
-	b.Row--
-	if b.Row < 0 {
-		b.Row = 0
+	if b.Row >= len(b.Lines) {
+		b.Row = len(b.Lines) - 1
 	}
 	b.Col = 0
 	b.ClampCursor()

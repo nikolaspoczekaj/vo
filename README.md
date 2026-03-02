@@ -47,7 +47,17 @@ vo path/to/file.txt   # open file (creates on first save if missing)
 
 ## Configuration (`vo.conf`)
 
-Vo looks for `vo.conf` in the current directory at startup. The file is line-based; empty lines and lines starting with `#` are ignored.
+Vo loads `vo.conf` from the system config directory at startup. If the file does not exist, it is created there with default content.
+
+**Config location (OS-specific):**
+
+| OS      | Path |
+|---------|------|
+| Linux   | `~/.config/vo/vo.conf` |
+| macOS   | `~/Library/Application Support/vo/vo.conf` |
+| Windows | `%APPDATA%\vo\vo.conf` (e.g. `C:\Users\<user>\AppData\Roaming\vo\vo.conf`) |
+
+The file is line-based; empty lines and lines starting with `#` are ignored.
 
 **Options** (examples):
 
@@ -60,6 +70,7 @@ Vo looks for `vo.conf` in the current directory at startup. The file is line-bas
 | `title` | `title vo - my editor` | Title bar text |
 | `title_time_format` | `title_time_format dd.MM.yy hh:mm:ss` | Date/time format (placeholders: `dd`, `MM`, `yy`, `yyyy`, `hh`, `mm`, `ss`) |
 | `scroll_margin` | `scroll_margin 3` | Lines from top/bottom at which view scrolls (0 = only at very top/bottom) |
+| `popup_timeout` | `popup_timeout 5` | Seconds that info/error popups stay visible (top-right) |
 
 **Keybindings:**
 
@@ -79,24 +90,6 @@ keybind insert jj normal_mode
 
 ---
 
-## Project structure
-
-| Path | Purpose |
-|------|---------|
-| `main.go` | Entry point, CLI, wiring |
-| `internal/core/` | Platform-agnostic editor logic (buffer, modes, keybinds, config, i18n) |
-| `internal/terminal/` | Terminal abstraction and OS-specific implementations (Unix / Windows) |
-
-Core is independent of OS; terminal I/O is behind the `Terminal` interface and selected by build tags (`windows` / `!windows`).
-
----
-
 ## Contributing
 
 Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines, code style, and how to submit changes.
-
----
-
-## License
-
-See [LICENSE](LICENSE) in this repository.

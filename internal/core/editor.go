@@ -2,9 +2,11 @@ package core
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/atotto/clipboard"
 	"github.com/nikolaspoczekaj/vo/internal/terminal"
 )
 
@@ -15,6 +17,7 @@ const (
 	ModeNormal Mode = iota
 	ModeInsert
 	ModeCommand
+	ModeVisual
 )
 
 func (m Mode) String() string {
@@ -25,9 +28,26 @@ func (m Mode) String() string {
 		return "INSERT"
 	case ModeCommand:
 		return "COMMAND"
+	case ModeVisual:
+		return "VISUAL"
 	default:
 		return "?"
 	}
+}
+
+// PopupKind is the type of popup notification (info, error, etc.).
+type PopupKind int
+
+const (
+	PopupInfo PopupKind = iota
+	PopupError
+)
+
+// popupEntry holds a single popup message and when it expires.
+type popupEntry struct {
+	Text string
+	Kind PopupKind
+	Until time.Time
 }
 
 // Editor ties buffer and terminal together; contains the main loop.
@@ -56,6 +76,19 @@ type Editor struct {
 	scrollRow int
 	// scrollCol is the display column (0-based) of the left edge of the content area; used for horizontal scrolling of long lines.
 	scrollCol int
+
+	// countPrefix is the numeric prefix for the next command (e.g. 4 for "4j"). 0 = none.
+	countPrefix int
+
+	// Visual mode: anchor is where the selection started (where v was pressed).
+	visualAnchorRow int
+	visualAnchorCol int
+
+	// popups are notifications shown as small boxes in the corner; expired entries are removed on each Redraw.
+	popups []popupEntry
+
+	// clipboard holds the last yanked text (editor-internal clipboard).
+	clipboard string
 }
 
 // NewEditor creates an editor with buffer and terminal. config may be nil; then DefaultConfig() is used.
@@ -69,6 +102,23 @@ func NewEditor(buf *Buffer, term terminal.Terminal, config *Config) *Editor {
 		Mode: ModeNormal,
 		Config: config,
 	}
+}
+
+// ShowPopup adds a notification (info or error) that is shown for the configured duration (popup_timeout in vo.conf).
+// Can be called from anywhere that has access to the editor, e.g. after save errors or other feedback.
+func (e *Editor) ShowPopup(text string, kind PopupKind) {
+	if e == nil {
+		return
+	}
+	timeoutSec := 3
+	if e.Config != nil {
+		timeoutSec = e.Config.PopupTimeoutSec()
+	}
+	e.popups = append(e.popups, popupEntry{
+		Text: text,
+		Kind: kind,
+		Until: time.Now().Add(time.Duration(timeoutSec) * time.Second),
+	})
 }
 
 // Run starts the main loop (read keys, draw, react).
@@ -417,8 +467,65 @@ func (e *Editor) Redraw() {
 		if i < len(visible) {
 			line := visible[i]
 			expanded := expandTabs(line, tabSize)
-			line = visibleLineSlice(expanded, e.scrollCol, contentWidth)
-			sb.WriteString(line)
+			visiblePart := visibleLineSlice(expanded, e.scrollCol, contentWidth)
+			if e.Mode == ModeVisual {
+				ar, ac := e.visualAnchorRow, e.visualAnchorCol
+				cr, cc := e.Buf.Row, e.Buf.Col
+				if ar >= len(e.Buf.Lines) {
+					ar = len(e.Buf.Lines) - 1
+				}
+				if cr >= len(e.Buf.Lines) {
+					cr = len(e.Buf.Lines) - 1
+				}
+				var r1, c1, r2, c2 int
+				if ar < cr {
+					r1, c1, r2, c2 = ar, ac, cr, cc
+				} else if ar > cr {
+					r1, c1, r2, c2 = cr, cc, ar, ac
+				} else {
+					r1, r2 = ar, cr
+					if ac < cc {
+						c1, c2 = ac, cc
+					} else {
+						c1, c2 = cc, ac
+					}
+				}
+				selStart, selEnd := visualSelectionRange(lineRow, line, tabSize, r1, c1, r2, c2)
+				if selStart < selEnd {
+					// Intersect with visible window
+					visStart := selStart - e.scrollCol
+					visEnd := selEnd - e.scrollCol
+					if visStart < 0 {
+						visStart = 0
+					}
+					if visEnd > contentWidth {
+						visEnd = contentWidth
+					}
+					if visStart < visEnd {
+						runes := []rune(visiblePart)
+						const revVideo = "\x1b[7m"
+						const revOff = "\x1b[0m"
+						if visEnd > len(runes) {
+							visEnd = len(runes)
+						}
+						if visStart > 0 {
+							sb.WriteString(string(runes[:visStart]))
+						}
+						sb.WriteString(revVideo)
+						sb.WriteString(string(runes[visStart:visEnd]))
+						sb.WriteString(revOff)
+						if visEnd < len(runes) {
+							sb.WriteString(string(runes[visEnd:]))
+						}
+					} else {
+						sb.WriteString(visiblePart)
+					}
+				} else {
+					sb.WriteString(visiblePart)
+				}
+			} else {
+				sb.WriteString(visiblePart)
+			}
 		}
 		sb.WriteString(clearToEnd)
 	}
@@ -449,6 +556,68 @@ func (e *Editor) Redraw() {
 	}
 	sb.WriteString(statusBarOff)
 	sb.WriteString(clearToEnd)
+
+	// Popups: bottom-right, one empty row above status bar.
+	// Prune expired, then draw newest first so the newest popup is closest to the bottom.
+	now := time.Now()
+	n := 0
+	for i := range e.popups {
+		if now.Before(e.popups[i].Until) {
+			e.popups[n] = e.popups[i]
+			n++
+		}
+	}
+	e.popups = e.popups[:n]
+	const popupWidth = 42
+	const popupMaxLines = 2
+	const popupMaxCount = 5
+	const (
+		popupStyleInfo  = "\x1b[44m\x1b[97m" // blue bg, white text
+		popupStyleError = "\x1b[41m\x1b[97m" // red bg, white text
+		popupStyleOff   = "\x1b[0m"
+	)
+	// Start drawing from the bottom (rows-2), leaving one empty line between popup boxes and the status bar (last row).
+	popupRow := rows - 2
+	showFrom := len(e.popups) - popupMaxCount
+	if showFrom < 0 {
+		showFrom = 0
+	}
+	// Column where the popup box starts so that it has a fixed width.
+	popupStartCol := cols - popupWidth + 1
+	if popupStartCol < 1 {
+		popupStartCol = 1
+	}
+	for i := len(e.popups) - 1; i >= showFrom && popupRow >= 2; i-- {
+		p := &e.popups[i]
+		style := popupStyleInfo
+		if p.Kind == PopupError {
+			style = popupStyleError
+		}
+		lines := popupTextToLines(p.Text, popupWidth, popupMaxLines)
+		// Draw each popup from bottom to top so multiple popups stack upwards from the corner.
+		for l := len(lines) - 1; l >= 0 && popupRow >= 2; l-- {
+			line := lines[l]
+			runes := []rune(line)
+			if len(runes) > popupWidth {
+				runes = runes[:popupWidth]
+			}
+			// Pad to fixed width so the box always has the same size.
+			if len(runes) < popupWidth {
+				line = string(runes) + strings.Repeat(" ", popupWidth-len(runes))
+			} else {
+				line = string(runes)
+			}
+			if popupRow >= rows {
+				break
+			}
+			sb.WriteString(move(popupRow, popupStartCol))
+			sb.WriteString(style)
+			sb.WriteString(line)
+			sb.WriteString(popupStyleOff)
+			sb.WriteString(clearToEnd)
+			popupRow--
+		}
+	}
 
 	curRow := e.Buf.Row - startRow + 2 // +2 because row 1 is title bar
 	curCol := contentStartCol + (cursorDisplayCol - e.scrollCol)
@@ -496,6 +665,30 @@ func expandTabs(s string, tabSize int) string {
 	return b.String()
 }
 
+// popupTextToLines splits text by newlines, truncates lines to maxWidth runes, returns at most maxLines lines.
+func popupTextToLines(text string, maxWidth, maxLines int) []string {
+	var out []string
+	for _, s := range strings.Split(text, "\n") {
+		s = strings.TrimSpace(s)
+		runes := []rune(s)
+		for len(out) < maxLines && len(runes) > 0 {
+			if len(runes) <= maxWidth {
+				out = append(out, string(runes))
+				break
+			}
+			out = append(out, string(runes[:maxWidth]))
+			runes = runes[maxWidth:]
+		}
+		if len(out) >= maxLines {
+			break
+		}
+	}
+	if len(out) == 0 {
+		out = append(out, "")
+	}
+	return out
+}
+
 // visibleLineSlice returns the substring of expanded (tabs already expanded) that occupies the display columns [scrollCol, scrollCol+width). One rune = one column.
 func visibleLineSlice(expanded string, scrollCol, width int) string {
 	runes := []rune(expanded)
@@ -508,6 +701,49 @@ func visibleLineSlice(expanded string, scrollCol, width int) string {
 		end = len(runes)
 	}
 	return string(runes[start:end])
+}
+
+// visualSelectionRange returns the selection display-column range [startDisp, endDisp) for the given buffer line in Visual mode.
+// r1,c1 and r2,c2 are selection bounds in buffer order (r1,c1 first in reading order). Cols are byte offsets.
+// Returns (start, end) in display columns; if no selection on this line, returns (0, 0).
+func visualSelectionRange(lineRow int, lineContent string, tabSize int, r1, c1, r2, c2 int) (startDisp, endDisp int) {
+	if lineRow < r1 || lineRow > r2 {
+		return 0, 0
+	}
+	lineLen := len(lineContent)
+	if lineLen == 0 {
+		return 0, 0
+	}
+	clamp := func(c int) int {
+		if c < 0 {
+			return 0
+		}
+		if c > lineLen {
+			return lineLen
+		}
+		return c
+	}
+	c1 = clamp(c1)
+	c2 = clamp(c2)
+	dispLen := len([]rune(expandTabs(lineContent, tabSize)))
+	if r1 == r2 {
+		startDisp = byteOffsetToDisplayCol(lineContent, c1, tabSize)
+		endDisp = byteOffsetToDisplayCol(lineContent, c2, tabSize)
+		if startDisp > endDisp {
+			startDisp, endDisp = endDisp, startDisp
+		}
+		return startDisp, endDisp
+	}
+	if lineRow == r1 {
+		startDisp = byteOffsetToDisplayCol(lineContent, c1, tabSize)
+		endDisp = dispLen
+		return startDisp, endDisp
+	}
+	if lineRow == r2 {
+		endDisp = byteOffsetToDisplayCol(lineContent, c2, tabSize)
+		return 0, endDisp
+	}
+	return 0, dispLen
 }
 
 // byteOffsetToDisplayCol returns the display column (0-based) for the byte offset in s (tabs expanded).
@@ -550,6 +786,8 @@ func (e *Editor) statusText() string {
 		modeKey = "mode_insert"
 	case ModeCommand:
 		modeKey = "mode_command"
+	case ModeVisual:
+		modeKey = "mode_visual"
 	}
 	return e.Buf.StatusLine(lang, T(lang, modeKey))
 }
@@ -563,6 +801,8 @@ func (e *Editor) HandleKey(k terminal.Key) {
 		e.handleInsertKey(k)
 	case ModeCommand:
 		e.handleCommandKey(k)
+	case ModeVisual:
+		e.handleVisualKey(k)
 	}
 }
 
@@ -572,6 +812,37 @@ func (e *Editor) handleNormalKey(k terminal.Key) {
 	keyStr := k.ConfigString()
 	if keyStr == "" {
 		return
+	}
+
+	// Numeric prefix: 1-9 start or extend count; 0 extends if count > 0, else runs move_line_start.
+	if k.Rune >= '1' && k.Rune <= '9' {
+		if e.countPrefix == 0 {
+			e.countPrefix = int(k.Rune - '0')
+		} else {
+			e.countPrefix = e.countPrefix*10 + int(k.Rune-'0')
+			if e.countPrefix > 9999 {
+				e.countPrefix = 9999
+			}
+		}
+		return
+	}
+	if k.Rune == '0' {
+		if e.countPrefix > 0 {
+			e.countPrefix *= 10
+			if e.countPrefix > 9999 {
+				e.countPrefix = 9999
+			}
+			return
+		}
+		// "0" without prefix = move line start
+		e.runActionWithCount("move_line_start", 1)
+		return
+	}
+
+	// Count to apply to the next command (1 if none was given).
+	n := e.countPrefix
+	if n == 0 {
+		n = 1
 	}
 
 	// Ignore extra "j" after "jj" only if it arrives within a short window (key repeat); otherwise treat as move_down.
@@ -589,41 +860,58 @@ func (e *Editor) handleNormalKey(k terminal.Key) {
 			e.pendingKey = 0
 			if action := e.Config.Keybinds.Action("normal", compound); action != "" {
 				e.setStatusKeybind(compound, action)
-				e.runAction(action)
+				e.runActionWithCount(action, n)
+				e.countPrefix = 0
 				return
 			}
+			// Chord not bound: fall through and try keyStr as single key (count still applies)
 		}
 		if action := e.Config.Keybinds.Action("normal", keyStr); action != "" {
 			e.setStatusKeybind(keyStr, action)
-			e.runAction(action)
+			e.runActionWithCount(action, n)
+			e.countPrefix = 0
 			return
 		}
 		if e.Config.Keybinds.IsPrefix("normal", keyStr) {
 			e.pendingKey = rune(keyStr[0])
 			return
 		}
+		e.countPrefix = 0
 		return
 	}
 
 	// Fallback ohne Config (eingebaute Keybinds)
+	e.countPrefix = 0
 	switch {
 	case k.Esc:
 	case k.Enter:
-		e.Buf.InsertRune('\n')
+		for i := 0; i < n; i++ {
+			e.Buf.InsertRune('\n')
+		}
 	case k.Up, k.Rune == 'k':
-		e.Buf.MoveUp()
+		for i := 0; i < n; i++ {
+			e.Buf.MoveUp()
+		}
 	case k.Down, k.Rune == 'j':
-		e.Buf.MoveDown()
+		for i := 0; i < n; i++ {
+			e.Buf.MoveDown()
+		}
 	case k.Left, k.Rune == 'h':
-		e.Buf.MoveLeft()
+		for i := 0; i < n; i++ {
+			e.Buf.MoveLeft()
+		}
 	case k.Right, k.Rune == 'l':
-		e.Buf.MoveRight()
+		for i := 0; i < n; i++ {
+			e.Buf.MoveRight()
+		}
 	case k.Home:
 		e.Buf.MoveLineStart()
 	case k.End:
 		e.Buf.MoveLineEnd()
 	case k.Backspace:
-		e.Buf.DeleteRuneBackspace()
+		for i := 0; i < n; i++ {
+			e.Buf.DeleteRuneBackspace()
+		}
 	case k.Rune == 'i':
 		e.Mode = ModeInsert
 	case k.Rune == 'a':
@@ -634,12 +922,16 @@ func (e *Editor) handleNormalKey(k terminal.Key) {
 		e.Mode = ModeInsert
 	case k.Rune == 'o':
 		e.Buf.MoveLineEnd()
-		e.Buf.InsertRune('\n')
+		for i := 0; i < n; i++ {
+			e.Buf.InsertRune('\n')
+		}
 		e.Mode = ModeInsert
 	case k.Rune == 'O':
 		e.Buf.MoveLineStart()
-		e.Buf.InsertRune('\n')
-		e.Buf.MoveUp()
+		for i := 0; i < n; i++ {
+			e.Buf.InsertRune('\n')
+			e.Buf.MoveUp()
+		}
 		e.Mode = ModeInsert
 	case k.Rune == ':':
 		e.Mode = ModeCommand
@@ -655,62 +947,108 @@ func (e *Editor) setStatusKeybind(keys, action string) {
 	e.statusKeybindUntil = time.Now().Add(1500 * time.Millisecond)
 }
 
-// runAction runs the action named by the keybind config.
+// runAction runs the action once (convenience for runActionWithCount(action, 1)).
 func (e *Editor) runAction(action string) {
+	e.runActionWithCount(action, 1)
+}
+
+// runActionWithCount runs the action n times. Motions and repeatable edits use n; mode switches and quit run once.
+func (e *Editor) runActionWithCount(action string, n int) {
+	if n <= 0 {
+		n = 1
+	}
+	repeatable := map[string]bool{
+		"move_left": true, "move_right": true, "move_up": true, "move_down": true,
+		"move_line_start": true, "move_line_end": true,
+		"next_word": true, "prev_word": true,
+		"split_line": true, "delete_backspace": true, "delete_line": true,
+	}
 	switch action {
-	case "move_left":
-		e.Buf.MoveLeft()
-	case "move_right":
-		e.Buf.MoveRight()
-	case "move_up":
-		e.Buf.MoveUp()
-	case "move_down":
-		e.Buf.MoveDown()
-	case "move_line_start":
-		e.Buf.MoveLineStart()
-	case "move_line_end":
-		e.Buf.MoveLineEnd()
-	case "buffer_start":
-		e.Buf.MoveBufferStart()
-	case "buffer_end":
-		e.Buf.MoveBufferEnd()
-	case "next_word":
-		e.Buf.MoveToNextWord()
-	case "prev_word":
-		e.Buf.MoveToPrevWord()
-	case "split_line":
-		e.Buf.InsertRune('\n')
-	case "delete_backspace":
-		e.Buf.DeleteRuneBackspace()
-	case "delete_line":
-		e.Buf.DeleteLine()
-	case "insert":
-		e.Mode = ModeInsert
-	case "insert_after":
-		e.Buf.MoveRight()
-		e.Mode = ModeInsert
-	case "insert_at_line_end":
-		e.Buf.MoveLineEnd()
-		e.Mode = ModeInsert
 	case "open_line_below":
 		e.Buf.MoveLineEnd()
-		e.Buf.InsertRune('\n')
+		for i := 0; i < n; i++ {
+			e.Buf.InsertRune('\n')
+		}
 		e.Mode = ModeInsert
+		return
 	case "open_line_above":
 		e.Buf.MoveLineStart()
-		e.Buf.InsertRune('\n')
-		e.Buf.MoveUp()
+		for i := 0; i < n; i++ {
+			e.Buf.InsertRune('\n')
+			e.Buf.MoveUp()
+		}
 		e.Mode = ModeInsert
-	case "command_mode":
-		e.Mode = ModeCommand
-		e.Cmd = ""
-	case "quit":
-		e.Quit = true
-	case "normal_mode":
-		e.Mode = ModeNormal
-		e.pendingKey = 0
-		e.ignoreNextJ = true
-		e.ignoreNextJTime = time.Now()
+		return
+	case "paste_clipboard":
+		e.pasteClipboard()
+		return
+	case "yank_line":
+		e.yankLine()
+		return
+	case "yank_visual_selection":
+		e.yankVisualSelection()
+		return
+	}
+	if !repeatable[action] {
+		n = 1
+	}
+	for i := 0; i < n; i++ {
+		switch action {
+		case "move_left":
+			e.Buf.MoveLeft()
+		case "move_right":
+			e.Buf.MoveRight()
+		case "move_up":
+			e.Buf.MoveUp()
+		case "move_down":
+			e.Buf.MoveDown()
+		case "move_line_start":
+			e.Buf.MoveLineStart()
+		case "move_line_end":
+			e.Buf.MoveLineEnd()
+		case "buffer_start":
+			e.Buf.MoveBufferStart()
+		case "buffer_end":
+			e.Buf.MoveBufferEnd()
+		case "next_word":
+			e.Buf.MoveToNextWord()
+		case "prev_word":
+			e.Buf.MoveToPrevWord()
+		case "split_line":
+			e.Buf.InsertRune('\n')
+		case "delete_backspace":
+			e.Buf.DeleteRuneBackspace()
+		case "delete_line":
+			e.Buf.DeleteLine()
+		case "insert":
+			e.Mode = ModeInsert
+		case "insert_after":
+			e.Buf.MoveRight()
+			e.Mode = ModeInsert
+		case "insert_at_line_end":
+			e.Buf.MoveLineEnd()
+			e.Mode = ModeInsert
+		case "command_mode":
+			e.Mode = ModeCommand
+			e.Cmd = ""
+		case "quit":
+			e.Quit = true
+		case "normal_mode":
+			e.Mode = ModeNormal
+			e.pendingKey = 0
+			e.ignoreNextJ = true
+			e.ignoreNextJTime = time.Now()
+		case "visual_mode":
+			e.Mode = ModeVisual
+			e.visualAnchorRow = e.Buf.Row
+			e.visualAnchorCol = e.Buf.Col
+		case "delete_visual_selection":
+			e.deleteVisualSelection()
+		}
+		// Mode switches and quit only run once
+		if e.Mode != ModeNormal || e.Quit {
+			break
+		}
 	}
 }
 
@@ -808,6 +1146,143 @@ func (e *Editor) handleCommandKey(k terminal.Key) {
 	}
 }
 
+// handleVisualKey handles keys in Visual mode. Movements extend the selection; Esc returns to Normal.
+func (e *Editor) handleVisualKey(k terminal.Key) {
+	if k.Esc {
+		e.Mode = ModeNormal
+		return
+	}
+	keyStr := k.ConfigString()
+	if keyStr == "" {
+		return
+	}
+	if e.Config != nil && e.Config.Keybinds != nil {
+		if e.pendingKey != 0 {
+			compound := string(e.pendingKey) + keyStr
+			e.pendingKey = 0
+			if action := e.Config.Keybinds.Action("visual", compound); action != "" {
+				e.runAction(action)
+				return
+			}
+		}
+		if action := e.Config.Keybinds.Action("visual", keyStr); action != "" {
+			e.runAction(action)
+			return
+		}
+		if e.Config.Keybinds.IsPrefix("visual", keyStr) {
+			e.pendingKey = rune(keyStr[0])
+			return
+		}
+	}
+	// Fallback when no config or no visual keybind for this key
+	switch {
+	case k.Up, k.Rune == 'k':
+		e.Buf.MoveUp()
+	case k.Down, k.Rune == 'j':
+		e.Buf.MoveDown()
+	case k.Left, k.Rune == 'h':
+		e.Buf.MoveLeft()
+	case k.Right, k.Rune == 'l':
+		e.Buf.MoveRight()
+	case k.Home, k.Rune == '0':
+		e.Buf.MoveLineStart()
+	case k.End:
+		e.Buf.MoveLineEnd()
+	case k.Rune == 'g':
+		e.Buf.MoveBufferStart()
+	case k.Rune == 'w':
+		e.Buf.MoveToNextWord()
+	case k.Rune == 'b':
+		e.Buf.MoveToPrevWord()
+	case k.Rune == 'd':
+		e.deleteVisualSelection()
+	case k.Rune == 'y':
+		e.yankVisualSelection()
+	}
+}
+
+// visualSelectionBounds returns the normalized selection bounds (r1,c1,r2,c2) for Visual mode.
+// r1,c1 is before r2,c2 in reading order. ok=false if the buffer is empty.
+func (e *Editor) visualSelectionBounds() (r1, c1, r2, c2 int, ok bool) {
+	if e.Buf == nil || len(e.Buf.Lines) == 0 {
+		return 0, 0, 0, 0, false
+	}
+	ar, ac := e.visualAnchorRow, e.visualAnchorCol
+	cr, cc := e.Buf.Row, e.Buf.Col
+	if ar >= len(e.Buf.Lines) {
+		ar = len(e.Buf.Lines) - 1
+	}
+	if cr >= len(e.Buf.Lines) {
+		cr = len(e.Buf.Lines) - 1
+	}
+	if ar < cr {
+		r1, c1, r2, c2 = ar, ac, cr, cc
+	} else if ar > cr {
+		r1, c1, r2, c2 = cr, cc, ar, ac
+	} else {
+		r1, r2 = ar, cr
+		if ac < cc {
+			c1, c2 = ac, cc
+		} else {
+			c1, c2 = cc, ac
+		}
+	}
+	return r1, c1, r2, c2, true
+}
+
+// deleteVisualSelection deletes the selected range in Visual mode and returns to Normal.
+func (e *Editor) deleteVisualSelection() {
+	r1, c1, r2, c2, ok := e.visualSelectionBounds()
+	if !ok {
+		return
+	}
+	e.Buf.DeleteRange(r1, c1, r2, c2)
+	e.Mode = ModeNormal
+}
+
+// yankVisualSelection copies the Visual selection into the system clipboard and returns to Normal mode.
+func (e *Editor) yankVisualSelection() {
+	r1, c1, r2, c2, ok := e.visualSelectionBounds()
+	if !ok {
+		return
+	}
+	if e.Buf == nil {
+		return
+	}
+	e.clipboard = e.Buf.RangeText(r1, c1, r2, c2)
+	_ = clipboard.WriteAll(e.clipboard)
+	e.Mode = ModeNormal
+}
+
+// pasteClipboard inserts the clipboard contents at the current cursor position (system clipboard, fallback: internal).
+func (e *Editor) pasteClipboard() {
+	if e.Buf == nil {
+		return
+	}
+	text, err := clipboard.ReadAll()
+	if err != nil || text == "" {
+		text = e.clipboard
+	} else {
+		e.clipboard = text
+	}
+	if text == "" {
+		return
+	}
+	for _, r := range text {
+		e.Buf.InsertRune(r)
+	}
+}
+
+// yankLine copies the current line (including a trailing newline) into the system clipboard.
+func (e *Editor) yankLine() {
+	if e.Buf == nil || len(e.Buf.Lines) == 0 {
+		return
+	}
+	line := e.Buf.CurrentLine()
+	e.clipboard = line + "\n"
+	_ = clipboard.WriteAll(e.clipboard)
+}
+
 func (e *Editor) executeCommand() {
 	cmd := strings.TrimSpace(e.Cmd)
 	if cmd == "" {
@@ -818,6 +1293,24 @@ func (e *Editor) executeCommand() {
 		lang = e.Config.Language()
 	}
 	parts := strings.Fields(cmd)
+
+	// Single number: jump to that line (1-based). E.g. ":23" -> line 23. ":0" -> first line.
+	if len(parts) == 1 {
+		if lineNum, err := strconv.Atoi(parts[0]); err == nil && lineNum >= 0 {
+			row := lineNum - 1
+			if row < 0 {
+				row = 0
+			}
+			if row >= len(e.Buf.Lines) {
+				row = len(e.Buf.Lines) - 1
+			}
+			e.Buf.Row = row
+			e.Buf.Col = 0
+			e.Buf.ClampCursor()
+			return
+		}
+	}
+
 	switch parts[0] {
 	case "q", "quit":
 		if e.Buf.Dirty {
@@ -830,17 +1323,22 @@ func (e *Editor) executeCommand() {
 	case "w", "write":
 		if err := e.Buf.Save(); err != nil {
 			e.Msg = fmt.Sprintf(T(lang, "msg_error"), err.Error())
+			e.ShowPopup(e.Msg, PopupError)
 			return
 		}
 		e.Msg = T(lang, "msg_saved")
+		e.ShowPopup(e.Msg, PopupInfo)
 	case "wq":
 		if err := e.Buf.Save(); err != nil {
 			e.Msg = fmt.Sprintf(T(lang, "msg_error"), err.Error())
+			e.ShowPopup(e.Msg, PopupError)
 			return
 		}
 		e.Msg = T(lang, "msg_saved")
+		e.ShowPopup(e.Msg, PopupInfo)
 		e.Quit = true
 	default:
 		e.Msg = fmt.Sprintf(T(lang, "msg_unknown_cmd"), parts[0])
+		e.ShowPopup(e.Msg, PopupError)
 	}
 }
