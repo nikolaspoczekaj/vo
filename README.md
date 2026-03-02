@@ -47,7 +47,17 @@ vo path/to/file.txt   # open file (creates on first save if missing)
 
 ## Configuration (`vo.conf`)
 
-Vo looks for `vo.conf` in the current directory at startup. The file is line-based; empty lines and lines starting with `#` are ignored.
+Vo loads `vo.conf` from the system config directory at startup. If the file does not exist, it is created there with default content.
+
+**Config location (OS-specific):**
+
+| OS      | Path |
+|---------|------|
+| Linux   | `~/.config/vo/vo.conf` |
+| macOS   | `~/Library/Application Support/vo/vo.conf` |
+| Windows | `%APPDATA%\vo\vo.conf` (e.g. `C:\Users\<user>\AppData\Roaming\vo\vo.conf`) |
+
+The file is line-based; empty lines and lines starting with `#` are ignored.
 
 **Options** (examples):
 

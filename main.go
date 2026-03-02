@@ -26,7 +26,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	config, _ := core.LoadConfig("vo.conf")
+	configPath, err := core.EnsureConfigFile()
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "vo: Config: %v\n", err)
+		os.Exit(1)
+	}
+	config, _ := core.LoadConfig(configPath)
 	ed := core.NewEditor(buf, term, config)
 	if err := ed.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "vo: %v\n", err)

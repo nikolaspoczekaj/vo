@@ -22,7 +22,7 @@ Thank you for your interest in contributing to Vo. This document explains how to
    ./vo
    ```
 
-3. **Optional:** Copy `vo.conf` into your working directory and adjust settings.
+3. **Optional:** Adjust settings in the config file. On first run, Vo creates `vo.conf` in the system config directory (see README); edit that file to customize.
 
 ---
 
@@ -57,7 +57,7 @@ When adding features, prefer extending the core and the `Terminal` interface rat
 
 ## Areas where help is welcome
 
-- **Documentation**: README, comments, doc comments, and `vo.conf` examples.
+- **Documentation**: README, comments, doc comments, and config examples.
 - **i18n**: New or improved translations in `internal/core/i18n.go` (and config/docs for new languages).
 - **Terminal behaviour**: Fixes and improvements for different terminals (especially Windows).
 - **Config**: New options or keybind actions that fit the current design (see existing options and keybinds).

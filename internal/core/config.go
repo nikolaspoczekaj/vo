@@ -2,15 +2,17 @@ package core
 
 import (
 	"bufio"
+	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
 
 // Config holds the configuration loaded at startup (options and keybinds).
 type Config struct {
-	Options  map[string]string  // e.g. "timeout" -> "300"
-	Keybinds *KeybindConfig     // built from keybind lines
+	Options  map[string]string // e.g. "timeout" -> "300"
+	Keybinds *KeybindConfig    // built from keybind lines
 }
 
 // DefaultConfig returns a config with default values.
@@ -22,11 +24,96 @@ func DefaultConfig() *Config {
 			"indent":              "4",
 			"language":            "en",
 			"title":               "vo - a vim-like editor",
-		"title_time_format":   "dd.MM.yy hh:mm",
-		"scroll_margin":       "0",
-	},
+			"title_time_format":   "dd.MM.yy hh:mm",
+			"scroll_margin":       "0",
+		},
 		Keybinds: defaultKeybinds(),
 	}
+}
+
+// ConfigPath returns the OS-specific path for vo.conf.
+// Linux: ~/.config/vo/vo.conf, macOS: ~/Library/Application Support/vo/vo.conf, Windows: %APPDATA%\vo\vo.conf
+func ConfigPath() (string, error) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "vo", "vo.conf"), nil
+}
+
+// DefaultConfigContent returns the default vo.conf content written when the file is created for the first time.
+func DefaultConfigContent() string {
+	return `# Vo editor config (line-based, loaded once at startup)
+# Empty lines and # lines are ignored.
+
+# Options: name value  or  name = value
+timeout 300
+relative_linenumber true
+indent 4
+scroll_margin 3
+# UI language: en (English) or de (German)
+language en
+
+# Title bar (top): title text and date/time format. Placeholders: dd, MM, yy, yyyy, hh, mm, ss (order and parts optional)
+title vo - a vim-like editor written in Go
+title_time_format dd.MM.yy hh:mm:ss
+
+# Keybinds: keybind <mode> <keys> <action>
+# Modes: normal, insert, command
+# Keys: single key (e.g. i, j), sequence (dd, jj), or special (<Up>, <C-c>)
+
+keybind normal h move_left
+keybind normal j move_down
+keybind normal k move_up
+keybind normal l move_right
+keybind normal <Up> move_up
+keybind normal <Down> move_down
+keybind normal <Left> move_left
+keybind normal <Right> move_right
+keybind normal <Home> move_line_start
+keybind normal <End> move_line_end
+keybind normal <Enter> split_line
+keybind normal <Backspace> delete_backspace
+keybind normal i insert
+keybind normal a insert_after
+keybind normal A insert_at_line_end
+keybind normal o open_line_below
+keybind normal O open_line_above
+keybind normal : command_mode
+keybind normal <C-c> quit
+keybind normal dd delete_line
+keybind normal gg buffer_start
+keybind normal G buffer_end
+keybind normal 0 move_line_start
+keybind normal w next_word
+keybind normal b prev_word
+
+keybind insert jj normal_mode
+`
+}
+
+// EnsureConfigFile returns the path to vo.conf in the system config directory.
+// If the file does not exist, the directory is created and the default config is written.
+func EnsureConfigFile() (string, error) {
+	path, err := ConfigPath()
+	if err != nil {
+		fmt.Fprint(os.Stderr, "1")
+		return "", err
+	}
+	if _, err := os.Stat(path); err == nil {
+		fmt.Fprint(os.Stderr, "2")
+		return path, nil
+	}
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		fmt.Fprint(os.Stderr, "4")
+		return "", err
+	}
+	if err := os.WriteFile(path, []byte(DefaultConfigContent()), 0644); err != nil {
+		fmt.Fprint(os.Stderr, "5")
+		return "", err
+	}
+	return path, nil
 }
 
 // PendingTimeoutMs returns the timeout in milliseconds for chord keys (e.g. jj). Default 300 if unset or invalid.
