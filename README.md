@@ -90,24 +90,6 @@ keybind insert jj normal_mode
 
 ---
 
-## Project structure
-
-| Path | Purpose |
-|------|---------|
-| `main.go` | Entry point, CLI, wiring |
-| `internal/core/` | Platform-agnostic editor logic (buffer, modes, keybinds, config, i18n) |
-| `internal/terminal/` | Terminal abstraction and OS-specific implementations (Unix / Windows) |
-
-Core is independent of OS; terminal I/O is behind the `Terminal` interface and selected by build tags (`windows` / `!windows`).
-
----
-
 ## Contributing
 
 Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines, code style, and how to submit changes.
-
----
-
-## License
-
-See [LICENSE](LICENSE) in this repository.

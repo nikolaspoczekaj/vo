@@ -20,6 +20,7 @@ var messages = map[string]map[string]string{
 		"mode_normal":      "NORMAL",
 		"mode_insert":      "INSERT",
 		"mode_command":     "COMMAND",
+		"mode_visual":      "VISUAL",
 	},
 	LangDE: {
 		"no_name":          "[Unbenannt]",
@@ -33,6 +34,7 @@ var messages = map[string]map[string]string{
 		"mode_normal":      "NORMAL",
 		"mode_insert":      "EINFÜGEN",
 		"mode_command":     "BEFEHL",
+		"mode_visual":      "VISUELL",
 	},
 }
 

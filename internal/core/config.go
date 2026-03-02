@@ -81,9 +81,12 @@ keybind normal a insert_after
 keybind normal A insert_at_line_end
 keybind normal o open_line_below
 keybind normal O open_line_above
+keybind normal p paste_clipboard
+keybind normal v visual_mode
 keybind normal : command_mode
 keybind normal <C-c> quit
 keybind normal dd delete_line
+keybind normal yy yank_line
 keybind normal gg buffer_start
 keybind normal G buffer_end
 keybind normal 0 move_line_start
@@ -91,6 +94,23 @@ keybind normal w next_word
 keybind normal b prev_word
 
 keybind insert jj normal_mode
+keybind visual h move_left
+keybind visual j move_down
+keybind visual k move_up
+keybind visual l move_right
+keybind visual <Up> move_up
+keybind visual <Down> move_down
+keybind visual <Left> move_left
+keybind visual <Right> move_right
+keybind visual <Home> move_line_start
+keybind visual <End> move_line_end
+keybind visual 0 move_line_start
+keybind visual w next_word
+keybind visual b prev_word
+keybind visual gg buffer_start
+keybind visual G buffer_end
+keybind visual d delete_visual_selection
+keybind visual y yank_visual_selection
 `
 }
 
@@ -385,14 +405,34 @@ func defaultKeybinds() *KeybindConfig {
 		{Mode: "normal", Keys: "A", Action: "insert_at_line_end"},
 		{Mode: "normal", Keys: "o", Action: "open_line_below"},
 		{Mode: "normal", Keys: "O", Action: "open_line_above"},
+		{Mode: "normal", Keys: "p", Action: "paste_clipboard"},
+		{Mode: "normal", Keys: "v", Action: "visual_mode"},
 		{Mode: "normal", Keys: ":", Action: "command_mode"},
 		{Mode: "normal", Keys: "<C-c>", Action: "quit"},
 		{Mode: "normal", Keys: "dd", Action: "delete_line"},
+		{Mode: "normal", Keys: "yy", Action: "yank_line"},
 		{Mode: "normal", Keys: "gg", Action: "buffer_start"},
 		{Mode: "normal", Keys: "G", Action: "buffer_end"},
 		{Mode: "normal", Keys: "0", Action: "move_line_start"},
 		{Mode: "normal", Keys: "w", Action: "next_word"},
 		{Mode: "normal", Keys: "b", Action: "prev_word"},
 		{Mode: "insert", Keys: "jj", Action: "normal_mode"},
+		{Mode: "visual", Keys: "h", Action: "move_left"},
+		{Mode: "visual", Keys: "j", Action: "move_down"},
+		{Mode: "visual", Keys: "k", Action: "move_up"},
+		{Mode: "visual", Keys: "l", Action: "move_right"},
+		{Mode: "visual", Keys: "<Up>", Action: "move_up"},
+		{Mode: "visual", Keys: "<Down>", Action: "move_down"},
+		{Mode: "visual", Keys: "<Left>", Action: "move_left"},
+		{Mode: "visual", Keys: "<Right>", Action: "move_right"},
+		{Mode: "visual", Keys: "<Home>", Action: "move_line_start"},
+		{Mode: "visual", Keys: "<End>", Action: "move_line_end"},
+		{Mode: "visual", Keys: "0", Action: "move_line_start"},
+		{Mode: "visual", Keys: "w", Action: "next_word"},
+		{Mode: "visual", Keys: "b", Action: "prev_word"},
+		{Mode: "visual", Keys: "gg", Action: "buffer_start"},
+		{Mode: "visual", Keys: "G", Action: "buffer_end"},
+		{Mode: "visual", Keys: "d", Action: "delete_visual_selection"},
+		{Mode: "visual", Keys: "y", Action: "yank_visual_selection"},
 	})
 }
