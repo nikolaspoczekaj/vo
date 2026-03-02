@@ -19,12 +19,12 @@ func DefaultConfig() *Config {
 	return &Config{
 		Options: map[string]string{
 			"timeout":             "300",
-			"relative_linenumber": "false",
+			"relative_linenumber": "true",
 			"indent":              "4",
 			"language":            "en",
-			"title":               "vo - a vim-like editor",
-			"title_time_format":   "dd.MM.yy hh:mm",
-			"scroll_margin":       "0",
+			"title":               "vo - a vim-like editor written in Go",
+			"title_time_format":   "dd.MM.yy hh:mm:ss",
+			"scroll_margin":       "3",
 			"popup_timeout":       "3",
 		},
 		Keybinds: defaultKeybinds(),
@@ -170,14 +170,14 @@ func (c *Config) Language() string {
 	return s
 }
 
-// Title returns the title bar text. Default "vo - a vim-like editor".
+// Title returns the title bar text. Default "vo - a vim-like editor written in Go".
 func (c *Config) Title() string {
 	if c == nil || c.Options == nil {
-		return "vo - a vim-like editor"
+		return "vo - a vim-like editor written in Go"
 	}
 	s := strings.TrimSpace(c.Options["title"])
 	if s == "" {
-		return "vo - a vim-like editor"
+		return "vo - a vim-like editor written in Go"
 	}
 	return s
 }
@@ -185,24 +185,25 @@ func (c *Config) Title() string {
 // TitleTimeFormat returns the time format for the title bar. Supports placeholders: dd, MM, yy, yyyy, hh, mm, ss (e.g. "dd.MM.yy hh:mm:ss"). Empty = hide time.
 func (c *Config) TitleTimeFormat() string {
 	if c == nil || c.Options == nil {
-		return "dd.MM.yy hh:mm"
+		return "dd.MM.yy hh:mm:ss"
 	}
 	return strings.TrimSpace(c.Options["title_time_format"])
 }
 
 // ScrollMargin returns how many lines from the top/bottom of the visible area trigger scrolling.
-// 0 = scroll only when cursor reaches the very top or bottom line. Default 0.
+// 0 = scroll only when cursor reaches the very top or bottom line.
+// Default 3 (matches the template config and README).
 func (c *Config) ScrollMargin() int {
 	if c == nil || c.Options == nil {
-		return 0
+		return 3
 	}
 	s := strings.TrimSpace(c.Options["scroll_margin"])
 	if s == "" {
-		return 0
+		return 3
 	}
 	n, err := strconv.Atoi(s)
 	if err != nil || n < 0 {
-		return 0
+		return 3
 	}
 	return n
 }
@@ -340,7 +341,7 @@ func LoadConfig(path string) (*Config, error) {
 		cfg.Options["timeout"] = "300"
 	}
 	if _, ok := cfg.Options["relative_linenumber"]; !ok {
-		cfg.Options["relative_linenumber"] = "false"
+		cfg.Options["relative_linenumber"] = "true"
 	}
 	if _, ok := cfg.Options["indent"]; !ok {
 		cfg.Options["indent"] = "4"
@@ -349,13 +350,13 @@ func LoadConfig(path string) (*Config, error) {
 		cfg.Options["language"] = "en"
 	}
 	if _, ok := cfg.Options["title"]; !ok {
-		cfg.Options["title"] = "vo - a vim-like editor"
+		cfg.Options["title"] = "vo - a vim-like editor written in Go"
 	}
 	if _, ok := cfg.Options["title_time_format"]; !ok {
-		cfg.Options["title_time_format"] = "dd.MM.yy hh:mm"
+		cfg.Options["title_time_format"] = "dd.MM.yy hh:mm:ss"
 	}
 	if _, ok := cfg.Options["scroll_margin"]; !ok {
-		cfg.Options["scroll_margin"] = "0"
+		cfg.Options["scroll_margin"] = "3"
 	}
 	if _, ok := cfg.Options["popup_timeout"]; !ok {
 		cfg.Options["popup_timeout"] = "3"
