@@ -2,7 +2,6 @@ package core
 
 import (
 	"bufio"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -26,6 +25,7 @@ func DefaultConfig() *Config {
 			"title":               "vo - a vim-like editor",
 			"title_time_format":   "dd.MM.yy hh:mm",
 			"scroll_margin":       "0",
+			"popup_timeout":       "3",
 		},
 		Keybinds: defaultKeybinds(),
 	}
@@ -51,6 +51,8 @@ timeout 300
 relative_linenumber true
 indent 4
 scroll_margin 3
+# Popup notifications (info/error): how many seconds they stay visible (e.g. 3)
+popup_timeout 3
 # UI language: en (English) or de (German)
 language en
 
@@ -94,26 +96,25 @@ keybind insert jj normal_mode
 
 // EnsureConfigFile returns the path to vo.conf in the system config directory.
 // If the file does not exist, the directory is created and the default config is written.
-func EnsureConfigFile() (string, error) {
+// The second return value is true if the file was created during this call.
+func EnsureConfigFile() (string, bool, error) {
 	path, err := ConfigPath()
 	if err != nil {
-		fmt.Fprint(os.Stderr, "1")
-		return "", err
+		return "", false, err
 	}
 	if _, err := os.Stat(path); err == nil {
-		fmt.Fprint(os.Stderr, "2")
-		return path, nil
+		return path, false, nil
+	} else if !os.IsNotExist(err) {
+		return "", false, err
 	}
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		fmt.Fprint(os.Stderr, "4")
-		return "", err
+		return "", false, err
 	}
 	if err := os.WriteFile(path, []byte(DefaultConfigContent()), 0644); err != nil {
-		fmt.Fprint(os.Stderr, "5")
-		return "", err
+		return "", false, err
 	}
-	return path, nil
+	return path, true, nil
 }
 
 // PendingTimeoutMs returns the timeout in milliseconds for chord keys (e.g. jj). Default 300 if unset or invalid.
@@ -202,6 +203,22 @@ func (c *Config) ScrollMargin() int {
 	n, err := strconv.Atoi(s)
 	if err != nil || n < 0 {
 		return 0
+	}
+	return n
+}
+
+// PopupTimeoutSec returns how many seconds popup notifications (info/error) stay visible. Default 3.
+func (c *Config) PopupTimeoutSec() int {
+	if c == nil || c.Options == nil {
+		return 3
+	}
+	s := strings.TrimSpace(c.Options["popup_timeout"])
+	if s == "" {
+		return 3
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 1 || n > 60 {
+		return 3
 	}
 	return n
 }
@@ -339,6 +356,9 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if _, ok := cfg.Options["scroll_margin"]; !ok {
 		cfg.Options["scroll_margin"] = "0"
+	}
+	if _, ok := cfg.Options["popup_timeout"]; !ok {
+		cfg.Options["popup_timeout"] = "3"
 	}
 
 	return cfg, nil

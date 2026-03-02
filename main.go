@@ -26,14 +26,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	configPath, err := core.EnsureConfigFile()
-
+	configPath, created, err := core.EnsureConfigFile()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "vo: Config: %v\n", err)
 		os.Exit(1)
 	}
 	config, _ := core.LoadConfig(configPath)
 	ed := core.NewEditor(buf, term, config)
+	// If the config file was just created, show an informational popup on startup.
+	if created {
+		lang := core.LangEN
+		if config != nil {
+			lang = config.Language()
+		}
+		msg := fmt.Sprintf(core.T(lang, "msg_config_created"), configPath)
+		ed.ShowPopup(msg, core.PopupInfo)
+	}
 	if err := ed.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "vo: %v\n", err)
 		os.Exit(1)

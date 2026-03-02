@@ -70,6 +70,7 @@ The file is line-based; empty lines and lines starting with `#` are ignored.
 | `title` | `title vo - my editor` | Title bar text |
 | `title_time_format` | `title_time_format dd.MM.yy hh:mm:ss` | Date/time format (placeholders: `dd`, `MM`, `yy`, `yyyy`, `hh`, `mm`, `ss`) |
 | `scroll_margin` | `scroll_margin 3` | Lines from top/bottom at which view scrolls (0 = only at very top/bottom) |
+| `popup_timeout` | `popup_timeout 5` | Seconds that info/error popups stay visible (top-right) |
 
 **Keybindings:**
 

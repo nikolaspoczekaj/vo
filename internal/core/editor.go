@@ -30,6 +30,21 @@ func (m Mode) String() string {
 	}
 }
 
+// PopupKind is the type of popup notification (info, error, etc.).
+type PopupKind int
+
+const (
+	PopupInfo PopupKind = iota
+	PopupError
+)
+
+// popupEntry holds a single popup message and when it expires.
+type popupEntry struct {
+	Text string
+	Kind PopupKind
+	Until time.Time
+}
+
 // Editor ties buffer and terminal together; contains the main loop.
 type Editor struct {
 	Buf         *Buffer
@@ -56,6 +71,9 @@ type Editor struct {
 	scrollRow int
 	// scrollCol is the display column (0-based) of the left edge of the content area; used for horizontal scrolling of long lines.
 	scrollCol int
+
+	// popups are notifications shown as small boxes in the corner; expired entries are removed on each Redraw.
+	popups []popupEntry
 }
 
 // NewEditor creates an editor with buffer and terminal. config may be nil; then DefaultConfig() is used.
@@ -69,6 +87,23 @@ func NewEditor(buf *Buffer, term terminal.Terminal, config *Config) *Editor {
 		Mode: ModeNormal,
 		Config: config,
 	}
+}
+
+// ShowPopup adds a notification (info or error) that is shown for the configured duration (popup_timeout in vo.conf).
+// Can be called from anywhere that has access to the editor, e.g. after save errors or other feedback.
+func (e *Editor) ShowPopup(text string, kind PopupKind) {
+	if e == nil {
+		return
+	}
+	timeoutSec := 3
+	if e.Config != nil {
+		timeoutSec = e.Config.PopupTimeoutSec()
+	}
+	e.popups = append(e.popups, popupEntry{
+		Text: text,
+		Kind: kind,
+		Until: time.Now().Add(time.Duration(timeoutSec) * time.Second),
+	})
 }
 
 // Run starts the main loop (read keys, draw, react).
@@ -450,6 +485,68 @@ func (e *Editor) Redraw() {
 	sb.WriteString(statusBarOff)
 	sb.WriteString(clearToEnd)
 
+	// Popups: bottom-right, one empty row above status bar.
+	// Prune expired, then draw newest first so the newest popup is closest to the bottom.
+	now := time.Now()
+	n := 0
+	for i := range e.popups {
+		if now.Before(e.popups[i].Until) {
+			e.popups[n] = e.popups[i]
+			n++
+		}
+	}
+	e.popups = e.popups[:n]
+	const popupWidth = 42
+	const popupMaxLines = 2
+	const popupMaxCount = 5
+	const (
+		popupStyleInfo  = "\x1b[44m\x1b[97m" // blue bg, white text
+		popupStyleError = "\x1b[41m\x1b[97m" // red bg, white text
+		popupStyleOff   = "\x1b[0m"
+	)
+	// Start drawing from the bottom (rows-2), leaving one empty line between popup boxes and the status bar (last row).
+	popupRow := rows - 2
+	showFrom := len(e.popups) - popupMaxCount
+	if showFrom < 0 {
+		showFrom = 0
+	}
+	// Column where the popup box starts so that it has a fixed width.
+	popupStartCol := cols - popupWidth + 1
+	if popupStartCol < 1 {
+		popupStartCol = 1
+	}
+	for i := len(e.popups) - 1; i >= showFrom && popupRow >= 2; i-- {
+		p := &e.popups[i]
+		style := popupStyleInfo
+		if p.Kind == PopupError {
+			style = popupStyleError
+		}
+		lines := popupTextToLines(p.Text, popupWidth, popupMaxLines)
+		// Draw each popup from bottom to top so multiple popups stack upwards from the corner.
+		for l := len(lines) - 1; l >= 0 && popupRow >= 2; l-- {
+			line := lines[l]
+			runes := []rune(line)
+			if len(runes) > popupWidth {
+				runes = runes[:popupWidth]
+			}
+			// Pad to fixed width so the box always has the same size.
+			if len(runes) < popupWidth {
+				line = string(runes) + strings.Repeat(" ", popupWidth-len(runes))
+			} else {
+				line = string(runes)
+			}
+			if popupRow >= rows {
+				break
+			}
+			sb.WriteString(move(popupRow, popupStartCol))
+			sb.WriteString(style)
+			sb.WriteString(line)
+			sb.WriteString(popupStyleOff)
+			sb.WriteString(clearToEnd)
+			popupRow--
+		}
+	}
+
 	curRow := e.Buf.Row - startRow + 2 // +2 because row 1 is title bar
 	curCol := contentStartCol + (cursorDisplayCol - e.scrollCol)
 	if curCol < contentStartCol {
@@ -494,6 +591,30 @@ func expandTabs(s string, tabSize int) string {
 		}
 	}
 	return b.String()
+}
+
+// popupTextToLines splits text by newlines, truncates lines to maxWidth runes, returns at most maxLines lines.
+func popupTextToLines(text string, maxWidth, maxLines int) []string {
+	var out []string
+	for _, s := range strings.Split(text, "\n") {
+		s = strings.TrimSpace(s)
+		runes := []rune(s)
+		for len(out) < maxLines && len(runes) > 0 {
+			if len(runes) <= maxWidth {
+				out = append(out, string(runes))
+				break
+			}
+			out = append(out, string(runes[:maxWidth]))
+			runes = runes[maxWidth:]
+		}
+		if len(out) >= maxLines {
+			break
+		}
+	}
+	if len(out) == 0 {
+		out = append(out, "")
+	}
+	return out
 }
 
 // visibleLineSlice returns the substring of expanded (tabs already expanded) that occupies the display columns [scrollCol, scrollCol+width). One rune = one column.
@@ -830,17 +951,22 @@ func (e *Editor) executeCommand() {
 	case "w", "write":
 		if err := e.Buf.Save(); err != nil {
 			e.Msg = fmt.Sprintf(T(lang, "msg_error"), err.Error())
+			e.ShowPopup(e.Msg, PopupError)
 			return
 		}
 		e.Msg = T(lang, "msg_saved")
+		e.ShowPopup(e.Msg, PopupInfo)
 	case "wq":
 		if err := e.Buf.Save(); err != nil {
 			e.Msg = fmt.Sprintf(T(lang, "msg_error"), err.Error())
+			e.ShowPopup(e.Msg, PopupError)
 			return
 		}
 		e.Msg = T(lang, "msg_saved")
+		e.ShowPopup(e.Msg, PopupInfo)
 		e.Quit = true
 	default:
 		e.Msg = fmt.Sprintf(T(lang, "msg_unknown_cmd"), parts[0])
+		e.ShowPopup(e.Msg, PopupError)
 	}
 }
