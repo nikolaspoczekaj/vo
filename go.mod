@@ -6,4 +6,4 @@ require golang.org/x/term v0.28.0
 
 require golang.org/x/sys v0.29.0
 
-require github.com/atotto/clipboard v0.1.4 // indirect
+require github.com/atotto/clipboard v0.1.4
